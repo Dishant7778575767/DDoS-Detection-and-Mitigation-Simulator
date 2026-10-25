@@ -1,0 +1,8 @@
+{
+  "model_type": "RandomForestClassifier",
+  "schema_version": "1.0.0",
+  "feature_count": 14,
+  "status": "APPROVED_OFFLINE_BASELINE",
+  "approved_at": "2026-10-25T16:11:22Z",
+  "rationale": "Random Forest achieved >99% precision, recall, and F1 on held-out test data with <5ms inference latency, comfortably satisfying all Phase 2 acceptance criteria."
+}

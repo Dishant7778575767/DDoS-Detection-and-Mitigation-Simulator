@@ -1,0 +1,23 @@
+{
+  "model_name": "IsolationForest",
+  "schema_version": "1.0.0",
+  "calibrated_threshold": 0.26641012269413233,
+  "accuracy": 0.9943,
+  "precision": 0.9953511747706998,
+  "recall": 0.9989155927672559,
+  "f1": 0.9971301983687443,
+  "false_positive_rate": 0.5331412103746398,
+  "p95_latency_ms": 4.811859999790613,
+  "confusion_matrix": [
+    [
+      162,
+      185
+    ],
+    [
+      43,
+      39610
+    ]
+  ],
+  "training_time_seconds": 0.08828020095825195,
+  "score_convention": "Isolation Forest decision_function: scores < calibrated_threshold represent anomalies (label=1). Negative/lower scores denote higher anomaly intensity."
+}

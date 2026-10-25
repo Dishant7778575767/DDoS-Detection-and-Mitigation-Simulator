@@ -1,1 +1,21 @@
-{"version": "1.0.0", "metrics": {}}
+{
+  "model_name": "RandomForestClassifier",
+  "schema_version": "1.0.0",
+  "accuracy": 0.999775,
+  "precision": 0.9999495560936239,
+  "recall": 0.9998234685900184,
+  "f1": 0.9998865083668554,
+  "false_positive_rate": 0.005763688760806916,
+  "p95_latency_ms": 6.564319999233694,
+  "confusion_matrix": [
+    [
+      345,
+      2
+    ],
+    [
+      7,
+      39646
+    ]
+  ],
+  "training_time_seconds": 2.8085060119628906
+}

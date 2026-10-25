@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "feature_count": 14,
+  "features": [
+    "Total Length of Fwd Packets",
+    "Bwd Packet Length Max",
+    "Flow Bytes/s",
+    "Fwd IAT Total",
+    "Bwd IAT Total",
+    "Fwd PSH Flags",
+    "Fwd Packets/s",
+    "FIN Flag Count",
+    "Fwd Avg Bytes/Bulk",
+    "Bwd Avg Bulk Rate",
+    "Subflow Fwd Packets",
+    "Init_Win_bytes_forward",
+    "Active Mean",
+    "Idle Mean"
+  ],
+  "target": "anomaly_detection",
+  "calibrated_threshold": 0.26641012269413233,
+  "score_meaning": "Anomaly decision score; not a calibrated probability."
+}

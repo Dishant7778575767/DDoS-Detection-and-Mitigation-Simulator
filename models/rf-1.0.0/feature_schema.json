@@ -1,1 +1,56 @@
-{"schema_version": "1.0.0", "features": []}
+{
+  "schema_version": "1.0.0",
+  "feature_count": 14,
+  "features": [
+    "Total Length of Fwd Packets",
+    "Bwd Packet Length Max",
+    "Flow Bytes/s",
+    "Fwd IAT Total",
+    "Bwd IAT Total",
+    "Fwd PSH Flags",
+    "Fwd Packets/s",
+    "FIN Flag Count",
+    "Fwd Avg Bytes/Bulk",
+    "Bwd Avg Bulk Rate",
+    "Subflow Fwd Packets",
+    "Init_Win_bytes_forward",
+    "Active Mean",
+    "Idle Mean"
+  ],
+  "units": {
+    "Total Length of Fwd Packets": "bytes",
+    "Bwd Packet Length Max": "bytes",
+    "Flow Bytes/s": "bytes/second",
+    "Fwd IAT Total": "microseconds",
+    "Bwd IAT Total": "microseconds",
+    "Fwd PSH Flags": "count",
+    "Fwd Packets/s": "packets/second",
+    "FIN Flag Count": "count",
+    "Fwd Avg Bytes/Bulk": "bytes",
+    "Bwd Avg Bulk Rate": "bytes/second",
+    "Subflow Fwd Packets": "count",
+    "Init_Win_bytes_forward": "bytes",
+    "Active Mean": "microseconds",
+    "Idle Mean": "microseconds"
+  },
+  "descriptions": {
+    "Total Length of Fwd Packets": "Cumulative payload length of all forward packets in the flow",
+    "Bwd Packet Length Max": "Maximum backward packet length observed in the flow",
+    "Flow Bytes/s": "Total flow volume in bytes divided by flow duration",
+    "Fwd IAT Total": "Total elapsed time between successive forward packets",
+    "Bwd IAT Total": "Total elapsed time between successive backward packets",
+    "Fwd PSH Flags": "Number of times the PSH flag was set in forward packets",
+    "Fwd Packets/s": "Number of forward packets per second",
+    "FIN Flag Count": "Number of packets with the FIN flag set",
+    "Fwd Avg Bytes/Bulk": "Average bytes transferred per forward bulk transmission",
+    "Bwd Avg Bulk Rate": "Rate of bytes transmitted per backward bulk transmission",
+    "Subflow Fwd Packets": "Average number of packets per forward subflow",
+    "Init_Win_bytes_forward": "Initial TCP window size advertised in forward direction",
+    "Active Mean": "Mean duration the flow was active before going idle",
+    "Idle Mean": "Mean duration the flow was idle between active periods"
+  },
+  "target": "binary_classification",
+  "positive_label": 1,
+  "negative_label": 0,
+  "score_meaning": "Random Forest probability; not a calibrated guarantee for production use."
+}

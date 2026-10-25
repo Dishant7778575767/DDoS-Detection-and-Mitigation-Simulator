@@ -1,4 +1,33 @@
-dataset_version: 1.0.0
+schema_version: "1.0.0"
+dataset_version: "1.0.0"
 seed: 42
+
+paths:
+  data_dir: "data/processed"
+  raw_data_root: "data/raw/CIC-DDoS2019"
+  rf_model_dir: "models/rf-1.0.0"
+  iforest_model_dir: "models/iforest-1.0.0"
+  approved_model_path: "models/approved_model.joblib"
+  report_path: "docs/model_evaluation_report.md"
+
 hyperparameters:
-  n_estimators: 100
+  random_forest:
+    n_estimators: 100
+    max_depth: 15
+    min_samples_split: 5
+    class_weight: "balanced"
+    n_jobs: 1
+    random_state: 42
+  isolation_forest:
+    n_estimators: 100
+    max_samples: 256
+    contamination: 0.05
+    n_jobs: 1
+    random_state: 42
+
+evaluation_targets:
+  min_precision: 0.90
+  min_recall: 0.90
+  min_f1: 0.90
+  max_false_positive_rate: 0.05
+  max_p95_latency_ms: 100.0

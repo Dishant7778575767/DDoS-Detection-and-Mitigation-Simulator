@@ -8,10 +8,10 @@ The seven phase names and gates below follow the system architecture.
 
 ## Status and planning assumptions
 
-Status reflects the repository snapshot inspected on 2026-10-25. A file or
-directory is not evidence that its intended behavior is implemented.
-Statuses should be changed only when review and the phase's acceptance
-evidence support the change.
+Status reflects the latest verified repository snapshot on 2026-10-25
+(commit `f15f000`). A file or directory is not evidence that its intended
+behavior is implemented. Statuses should be changed only when review and the
+phase's acceptance evidence support the change.
 
 | Status | Meaning |
 | --- | --- |
@@ -23,24 +23,23 @@ evidence support the change.
 
 | Work area | Snapshot status | Repository evidence |
 | --- | --- | --- |
-| Python package | In progress | `backend/pyproject.toml` declares Python 3.10+ and backend/development dependencies; editable installation succeeded locally on Python 3.14, while a clean Python 3.10 CI run is pending. |
-| Backend bootstrap | In progress | Validated settings, request IDs, sanitized error responses, and authenticated `GET /api/v1/health` are implemented; Phase 1 tests pass locally, but hosted CI has not run. |
+| Python package | Verified complete | `backend/pyproject.toml` declares Python 3.10+ and backend/development dependencies; the editable install and backend checks passed in the hosted CI run for commit `f15f000` on Python 3.10. |
+| Backend bootstrap | Verified complete | Validated settings, request IDs, sanitized error responses, authenticated `GET /api/v1/health`, and Phase 1 backend tests passed in the hosted CI run for commit `f15f000`. |
 | Backend features and API | In progress | Module paths exist, but the planned end-to-end API, detection, policy, storage, and mitigation behavior is not established. |
-| Tests | In progress | Phase 1 settings, health, error, and migration tests exist and pass locally; broader planned workflows remain untested/unimplemented. |
-| Dataset/model workflow | In progress | ML scripts, notebooks, config, and artifact paths exist; reproducible evaluation and model approval are not established. |
-| Frontend | In progress | Next.js/React/TypeScript/Tailwind/Recharts dependencies, lockfile, scripts, accessible navigation, and five scaffold routes exist; local lint, type-check, and production build pass, but pages do not consume backend data. |
-| CI | In progress | `.github/workflows/ci.yml` defines backend and frontend checks; the first hosted workflow result is pending. |
+| Tests | In progress | Phase 1 settings, health, error, and migration tests passed in hosted CI for commit `f15f000`; broader planned workflows remain untested/unimplemented. |
+| Dataset/model workflow | Verified complete for the CIC-DDoS2019 baseline | Reproducible preparation, train/validation/test split, model comparison, and approved Random Forest artifact are recorded in `ml/` and `docs/model_evaluation_report.md`; the feature schema is versioned and the model is approved for this Phase 2 baseline only. |
+| Frontend | Verified complete | Next.js/React/TypeScript/Tailwind/Recharts dependencies, lockfile, scripts, accessible navigation, and five scaffold routes exist; hosted CI lint, type-check, and production build passed for commit `f15f000`. Pages do not yet consume backend data. |
+| CI | Verified complete | `.github/workflows/ci.yml` backend and frontend jobs both passed in hosted run `40202861846` for commit `f15f000`. |
 | Generator, replay, collector, lab tooling | In progress | Script paths exist, but inspected helpers are placeholders; their planned capabilities are not established. |
 | Documentation deliverables | In progress | Several docs exist as short placeholders; requirements, architecture, and README describe intended behavior. |
 | Simulation/lab/release gates | Blocked | Required test evidence is absent. Lab enforcement cannot proceed before the simulation gate and explicit lab approval. |
 
-No work area is **Verified complete** in this snapshot. Re-check files and run
-the relevant tests before updating these statuses; Phase 1 remains open until
-the configured workflow passes in hosted CI. The intended configuration
-baseline is `MITIGATION_MODE=simulation`,
-`DATABASE_URL=sqlite:///./sentrix.db`, and `API_AUTH_REQUIRED=true`. The
-`.env.example` also contains a development-only token placeholder; never
-commit a real token.
+Phase 1 is **Verified complete**: its hosted CI gate passed for commit
+`f15f000` (`40202861846`), with both backend and frontend jobs successful.
+This does not complete later detection, mitigation, or release gates. The
+intended configuration baseline is `MITIGATION_MODE=simulation`,
+`DATABASE_URL=sqlite:///./sentrix.db`, and `API_AUTH_REQUIRED=true`. Configure
+development-only tokens locally; never commit real tokens.
 
 ## Readiness before Phase 1
 
@@ -50,7 +49,7 @@ change the architecture's Phase 1–7 numbering.
 
 | Decision | Required resolution before affected work |
 | --- | --- |
-| Feature schema and model selection | Define runtime-available feature names, units, ordering, window semantics, preprocessing, score convention, and approval evidence. Model selection remains evidence-based; neither candidate is presumed selected. Required before Phase 2 approval and Phase 3 inference. |
+| Feature schema and model selection | Define runtime-available feature names, units, ordering, window semantics, preprocessing, score convention, and approval evidence. The current Phase 2 baseline has a versioned Random Forest feature schema and approved artifact; future runtime changes require the same schema compatibility check. |
 | API details | Define request/response schemas, status codes, filtering/pagination parameters, request-size limits, and error examples in `docs/api_schemas.md`. Required before corresponding Phase 3 endpoint implementation. |
 | Demonstration file replay | Approve a bounded file format, record validation behavior, and source labeling. Required before Phase 5 replay implementation. |
 | Threshold and mitigation bounds | Define threshold configuration and bounded action parameters, including maximum duration and concurrency. Missing/invalid bounds must fail closed. Required before Phase 3 policy behavior and Phase 5 simulation acceptance. |
@@ -96,14 +95,15 @@ health and navigation surfaces.
 
 | Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
 | --- | --- | --- | --- |
-| 1.1 Backend setup and configuration | Verify `backend/pyproject.toml`; implement configuration validation, logging, and error handling in `backend/app/core/config.py`, `logging.py`, and `errors.py`; wire the FastAPI app in `backend/app/main.py`. Keep simulation, SQLite URL, and auth-required defaults. | A clean Python 3.10+ environment installs via `python -m pip install -e "backend[dev]"`. Settings tests cover defaults and invalid/unsafe modes; error tests verify the documented error shape and no secret/stack-trace leakage. | `.env.example` exists, but loading/validation behavior is not yet established. |
-| 1.2 Health endpoint and SQLite base | Implement `GET /api/v1/health`; configure SQLAlchemy and migration setup using declared dependencies and `backend/migrations/`. | Health smoke test matches the approved contract; DB initialization/migrations are repeatable and isolated tests do not modify developer data. | Exact health exposure/auth behavior follows the approved API contract; auth is required by default. |
-| 1.3 Frontend skeleton | Configure `frontend/package.json` and implement the five dashboard routes and navigation under `frontend/src/` using Next.js, React, TypeScript, Tailwind CSS, and Recharts. | Fresh frontend install/build/lint commands are declared and pass; five routes load and keyboard/responsive navigation is checked. | Current manifest has no dependencies/scripts; do not claim it runs now. |
-| 1.4 Continuous integration | Add the planned CI workflow for backend lint/tests and frontend lint/build using the project’s selected commands. Keep local commands consistent with CI. | CI is green for the phase change; backend and frontend checks are reproducible locally. | No CI workflow exists in the inspected tree; select frontend tooling while configuring its manifest. |
+| 1.1 Backend setup and configuration | Verify `backend/pyproject.toml`; implement configuration validation, logging, and error handling in `backend/app/core/config.py`, `logging.py`, and `errors.py`; wire the FastAPI app in `backend/app/main.py`. Keep simulation, SQLite URL, and auth-required defaults. | **Complete:** editable install and backend lint/tests passed in hosted CI on Python 3.10 for commit `f15f000`. | None for Phase 1. |
+| 1.2 Health endpoint and SQLite base | Implement `GET /api/v1/health`; configure SQLAlchemy and migration setup using declared dependencies and `backend/migrations/`. | **Complete:** health, configuration, error, and migration tests passed in hosted CI for commit `f15f000`. | Health is a minimal Phase 1 surface; broader API contract work remains in Phase 3. |
+| 1.3 Frontend skeleton | Configure `frontend/package.json` and implement the five dashboard routes and navigation under `frontend/src/` using Next.js, React, TypeScript, Tailwind CSS, and Recharts. | **Complete:** hosted CI frontend lint, type-check, and production build passed; all five dashboard routes are scaffolded. | Pages are a skeleton and do not yet consume backend data; integration is Phase 4. |
+| 1.4 Continuous integration | Add the planned CI workflow for backend lint/tests and frontend lint/build using the project’s selected commands. Keep local commands consistent with CI. | **Complete:** both hosted CI jobs passed in run `40202861846` for commit `f15f000`. | None for Phase 1. |
 
-**Phase exit:** Fresh-environment setup is reproducible, the health endpoint
-works, all five dashboard routes load, and CI is green. This does not claim
-that detection or mitigation exists.
+**Phase exit — verified complete for commit `f15f000`:** Fresh-environment
+setup is reproducible, the health endpoint works, all five dashboard routes
+are present, and hosted CI is green. This does not claim that detection or
+mitigation exists.
 
 ## Phase 2 — Data and ML baseline
 
@@ -112,6 +112,13 @@ document model selection before runtime use.
 
 **Dependencies:** Phase 1 Python environment; readiness decisions for dataset
 provenance, labels, feature schema, and evaluation splits.
+
+**Status (2026-10-25): Verified complete for the CIC-DDoS2019 baseline.**
+The dataset was prepared, cleaned, split into train/validation/test partitions,
+and evaluated using both Random Forest and Isolation Forest candidates. The
+Random Forest model is selected and approved for this Phase 2 offline baseline
+under feature schema version `1.0.0`. Isolation Forest remains a non-selected
+candidate and is not approved for runtime inference.
 
 | Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
 | --- | --- | --- | --- |
@@ -280,3 +287,17 @@ misuse. Mitigate through documented datasets/splits, held-out evaluation,
 model-specific score handling, default simulation, bounded/authorized
 actions, isolation, owned-resource cleanup, restart reconciliation, and
 recovery tests. No risk is considered eliminated until evidence supports it.
+
+## Phase completion checklist
+
+- [x] **Phase 1 — Foundation and skeleton:** Completed and verified. Backend
+  and frontend jobs passed hosted CI run `40202861846` for commit `f15f000`.
+- [x] **Phase 2 — Data and ML baseline:** Verified complete for the current
+  CIC-DDoS2019 offline baseline. Reproducible preparation, split generation,
+  model comparison, selection, and approved artifact export are complete.
+- [ ] **Phase 3 — Backend, detection and policy:** Not complete.
+- [ ] **Phase 4 — Dashboard:** Not complete.
+- [ ] **Phase 5 — Simulation and integration testing:** Not complete.
+- [ ] **Phase 6 — Isolated Linux lab:** Not complete; remains gated by prior
+  safety evidence and explicit approval.
+- [ ] **Phase 7 — Release hardening:** Not complete.
