@@ -6,14 +6,14 @@ Enforces feature names, ordering, units, and validation.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
-from pydantic import BaseModel, Field
+from typing import Any
 
+from pydantic import BaseModel, Field
 
 FEATURE_SCHEMA_VERSION: str = "1.0.0"
 
 # Strict ordered list of features expected by models in schema 1.0.0
-FEATURE_NAMES: List[str] = [
+FEATURE_NAMES: list[str] = [
     "Total Length of Fwd Packets",
     "Bwd Packet Length Max",
     "Flow Bytes/s",
@@ -30,7 +30,7 @@ FEATURE_NAMES: List[str] = [
     "Idle Mean",
 ]
 
-FEATURE_UNITS: Dict[str, str] = {
+FEATURE_UNITS: dict[str, str] = {
     "Total Length of Fwd Packets": "bytes",
     "Bwd Packet Length Max": "bytes",
     "Flow Bytes/s": "bytes/second",
@@ -47,7 +47,7 @@ FEATURE_UNITS: Dict[str, str] = {
     "Idle Mean": "microseconds",
 }
 
-FEATURE_DESCRIPTIONS: Dict[str, str] = {
+FEATURE_DESCRIPTIONS: dict[str, str] = {
     "Total Length of Fwd Packets": "Cumulative payload length of all forward packets in the flow",
     "Bwd Packet Length Max": "Maximum backward packet length observed in the flow",
     "Flow Bytes/s": "Total flow volume in bytes divided by flow duration",
@@ -67,13 +67,24 @@ FEATURE_DESCRIPTIONS: Dict[str, str] = {
 
 class FeatureSchemaMetadata(BaseModel):
     """Metadata describing the feature schema version and contract."""
-    schema_version: str = Field(default=FEATURE_SCHEMA_VERSION, description="Feature schema version string")
-    feature_count: int = Field(default=len(FEATURE_NAMES), description="Total count of required features")
-    features: List[str] = Field(default_factory=lambda: list(FEATURE_NAMES), description="Ordered feature names")
-    units: Dict[str, str] = Field(default_factory=lambda: dict(FEATURE_UNITS), description="Units per feature")
-    descriptions: Dict[str, str] = Field(default_factory=lambda: dict(FEATURE_DESCRIPTIONS), description="Descriptions")
+
+    schema_version: str = Field(
+        default=FEATURE_SCHEMA_VERSION, description="Feature schema version string"
+    )
+    feature_count: int = Field(
+        default=len(FEATURE_NAMES), description="Total count of required features"
+    )
+    features: list[str] = Field(
+        default_factory=lambda: list(FEATURE_NAMES), description="Ordered feature names"
+    )
+    units: dict[str, str] = Field(
+        default_factory=lambda: dict(FEATURE_UNITS), description="Units per feature"
+    )
+    descriptions: dict[str, str] = Field(
+        default_factory=lambda: dict(FEATURE_DESCRIPTIONS), description="Descriptions"
+    )
 
 
-def get_feature_schema() -> Dict[str, Any]:
+def get_feature_schema() -> dict[str, Any]:
     """Return dictionary representation of the current feature schema."""
     return FeatureSchemaMetadata().model_dump()

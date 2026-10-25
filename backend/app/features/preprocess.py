@@ -9,14 +9,13 @@ Ensures strict parity between training-time and runtime inference preprocessing:
 
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, List, Sequence, Union
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from app.features.definitions import FEATURE_NAMES, FEATURE_SCHEMA_VERSION
-
 
 # Excluded identifiers, timestamps, and target labels
 PROHIBITED_COLUMNS = {
@@ -61,13 +60,13 @@ def sanitize_numeric_value(val: Any, default: float = 0.0) -> float:
         return default
 
 
-def prepare_feature_vector(record: Dict[str, Any]) -> np.ndarray:
+def prepare_feature_vector(record: dict[str, Any]) -> np.ndarray:
     """Convert a single flow observation dictionary into a strict, ordered 1D NumPy array."""
     # Strip whitespace from keys
     cleaned_record = {normalize_feature_name(k): v for k, v in record.items()}
 
-    vector: List[float] = []
-    missing_keys: List[str] = []
+    vector: list[float] = []
+    missing_keys: list[str] = []
 
     for name in FEATURE_NAMES:
         if name in cleaned_record:

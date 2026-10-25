@@ -8,24 +8,25 @@ detection and policy evaluation.
 from __future__ import annotations
 
 import collections
-from dataclasses import dataclass, field
-from typing import Deque, Dict, List, Optional, Set
+from dataclasses import dataclass
 
 
 @dataclass
 class FlowObservation:
     """Individual flow snapshot recorded in the sliding window."""
+
     timestamp: float
     packet_count: int
     byte_count: int
     syn_flags: int = 0
     ack_flags: int = 0
-    source_ip: Optional[str] = None
+    source_ip: str | None = None
 
 
 @dataclass
 class WindowSummary:
     """Summary statistics aggregated over an active time window."""
+
     window_duration_seconds: float
     observation_count: int
     packet_rate: float
@@ -39,12 +40,16 @@ class WindowSummary:
 class SlidingWindowAggregator:
     """Maintains a sliding time-window buffer of flow records."""
 
-    def __init__(self, window_duration_seconds: float = 10.0, max_observations: int = 50_000):
+    def __init__(
+        self, window_duration_seconds: float = 10.0, max_observations: int = 50_000
+    ):
         if window_duration_seconds <= 0:
             raise ValueError("window_duration_seconds must be positive")
         self.window_duration_seconds = window_duration_seconds
         self.max_observations = max_observations
-        self.buffer: Deque[FlowObservation] = collections.deque(maxlen=max_observations)
+        self.buffer: collections.deque[FlowObservation] = collections.deque(
+            maxlen=max_observations
+        )
 
     def add_observation(
         self,
@@ -53,7 +58,7 @@ class SlidingWindowAggregator:
         byte_count: int,
         syn_flags: int = 0,
         ack_flags: int = 0,
-        source_ip: Optional[str] = None,
+        source_ip: str | None = None,
     ) -> None:
         """Add a flow observation to the sliding window buffer."""
         obs = FlowObservation(
@@ -93,7 +98,7 @@ class SlidingWindowAggregator:
         total_bytes = 0
         total_syn = 0
         total_ack = 0
-        sources: Set[str] = set()
+        sources: set[str] = set()
 
         for obs in self.buffer:
             total_packets += obs.packet_count

@@ -35,6 +35,11 @@ def test_feature_schema_contract() -> None:
     assert schema["feature_count"] == 14
     assert schema["features"] == FEATURE_NAMES
 
+    # Validate schema validator
+    validate_feature_schema(FEATURE_NAMES)
+    with pytest.raises(ValueError, match="Schema mismatch"):
+        validate_feature_schema(["wrong_feature"])
+
 
 def test_prepare_feature_vector_valid() -> None:
     """Ensure a valid observation dictionary produces an ordered 1x14 numpy vector."""
@@ -90,16 +95,30 @@ def test_sliding_window_aggregator() -> None:
     agg = SlidingWindowAggregator(window_duration_seconds=10.0)
 
     # Add observations at t=0, t=2, t=5
-    agg.add_observation(timestamp=1000.0, packet_count=100, byte_count=10000, syn_flags=50, ack_flags=50, source_ip="192.168.1.10")
-    agg.add_observation(timestamp=1002.0, packet_count=200, byte_count=20000, syn_flags=100, ack_flags=50, source_ip="192.168.1.20")
+    agg.add_observation(
+        timestamp=1000.0,
+        packet_count=100,
+        byte_count=10000,
+        syn_flags=50,
+        ack_flags=50,
+        source_ip="192.168.1.10",
+    )
+    agg.add_observation(
+        timestamp=1002.0,
+        packet_count=200,
+        byte_count=20000,
+        syn_flags=100,
+        ack_flags=50,
+        source_ip="192.168.1.20",
+    )
 
     summary = agg.get_summary(current_timestamp=1005.0)
     assert summary.observation_count == 2
     assert summary.unique_sources == 2
     assert summary.packet_rate == 30.0  # 300 packets / 10s
     assert summary.byte_rate == 3000.0  # 30,000 bytes / 10s
-    assert summary.syn_rate == 15.0     # 150 syn / 10s
-    assert summary.syn_ack_ratio == 1.5 # 150 syn / 100 ack
+    assert summary.syn_rate == 15.0  # 150 syn / 10s
+    assert summary.syn_ack_ratio == 1.5  # 150 syn / 100 ack
 
     # Advance time to t=1015 (old observations expire)
     summary_later = agg.get_summary(current_timestamp=1015.0)
@@ -110,4 +129,3 @@ def test_sliding_window_aggregator() -> None:
     agg.add_observation(timestamp=1020.0, packet_count=50, byte_count=5000)
     agg.reset()
     assert len(agg.buffer) == 0
-
