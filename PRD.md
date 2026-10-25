@@ -3,10 +3,15 @@
 ## Machine Learning-Based DDoS Detection and Mitigation Platform
 
 **Project name:** SENTRIX DDoS Defense Platform\
-**Document version:** 1.0\
+**Document version:** 1.1\
 **Tagline:** Detect. Defend. Stay Resilient.\
-**Status:** Draft baseline for implementation\
+**Status:** Implementation baseline\
 **Date:** October 2026
+
+**Version 1.1 changes:** Standardized the database name as `sentrix.db`,
+made API authentication required by default with a local-development
+token example, and added mitigation cancellation, emergency disable, and
+audit retrieval endpoints.
 
 ---
 
@@ -408,6 +413,15 @@ status
 POST `/api/v1/mitigations/simulate` Evaluate and record
 simulated mitigation
 
+POST `/api/v1/mitigations/{id}/cancel` Cancel an authorized
+mitigation action
+
+POST `/api/v1/mitigations/disable` Disable mitigation actions
+through an authorized operator control
+
+GET `/api/v1/audit` Retrieve authorized audit records;
+optional `format=json|csv` export (default `json`)
+
 GET `/api/v1/config/thresholds` Read threshold
 configuration
 
@@ -689,12 +703,15 @@ enforcement resumes
 APP_ENV=development
 MITIGATION_MODE=simulation
 MODEL_PATH=models/approved_model.joblib
-DATABASE_URL=sqlite:///./praxis.db
+DATABASE_URL=sqlite:///./sentrix.db
 API_AUTH_REQUIRED=true
+API_AUTH_TOKEN=dev-only-change-me
 ```
 
-These are example values. The implementation must validate configuration
-and never commit secrets to version control.
+Use `sentrix.db` as the local SQLite database filename. The token shown
+is a local-development placeholder only; replace it outside local
+development and never commit real secrets to version control. The
+implementation must validate configuration.
 
 ---
 
@@ -731,29 +748,15 @@ instructions are complete.
 
 ---
 
-Phase Scope Exit condition
-
----
-
-Phase 1 Requirements, Project skeleton and
-repository structure, baseline requirements
-development setup approved
-
-Phase 2 Dataset preparation and Reproducible training
-ML baseline and evaluation report
-
-Phase 3 FastAPI and detection Validated endpoints and
-engine policy integration
-
-Phase 4 React dashboard Live and historical
-views connected to API
-
-Phase 5 Simulation and Critical simulation and
-integration testing safety tests pass
-
-Phase 6 Isolated Linux Enforcement,
-integration expiration, cleanup,
-and recovery verified
+| Phase | Scope | Exit condition |
+| --- | --- | --- |
+| 1 | Requirements, project skeleton, repository structure | Baseline requirements approved and development setup works |
+| 2 | Dataset preparation and ML baseline | Reproducible training and evaluation report |
+| 3 | FastAPI, detection engine, and policy integration | Validated and tested API endpoints and policy integration |
+| 4 | React dashboard | Live and historical views connected to API |
+| 5 | Simulation and integration testing | Critical simulation and safety tests pass |
+| 6 | Isolated Linux enforcement integration | Expiration, cleanup, and recovery verified in the lab |
+| 7 | Release hardening and documentation | Release gates recorded; docs complete and no unresolved critical security issues |
 
 ---
 
@@ -776,6 +779,6 @@ and recovery verified
 - The initial system is a research and defensive prototype, not a
   guarantee of production-grade DDoS protection.
 
-**Document status:** Initial PRD baseline ready for implementation
-planning. Technical thresholds, data schema, model selection, and
-deployment details must be validated during development.
+**Document status:** Version 1.1 implementation baseline. Technical
+thresholds, data schema, model selection, and deployment details must be
+validated during development.

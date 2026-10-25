@@ -1,0 +1,56 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local datasets and captures; keep data/README.md tracked
+data/raw/
+data/processed/
+data/lab/
+*.pcap
+*.pcapng
+
+# Local databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+
+# Node and frontend build artifacts
+node_modules/
+.next/
+out/
+coverage/
+dist/
+.turbo/
+
+# Generated model artifacts
+models/*.joblib
+models/**/*.joblib
+
+# Notebook and tool caches
+.ipynb_checkpoints/
+.cache/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
