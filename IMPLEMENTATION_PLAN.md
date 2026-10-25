@@ -1,367 +1,282 @@
 # SENTRIX Implementation Plan
 
-Step-by-step build plan for the SENTRIX DDoS Defense Platform, based on PRD v1.1, the README project structure and SYSTEM\_ARCHITECTURE.md. October 2026.
+This plan translates [PRD.md](PRD.md) and
+[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md) into dependency-ordered
+implementation and verification work. It describes intended work, not a claim
+that any feature, test, release gate, or operational capability is complete.
+The seven phase names and gates below follow the system architecture.
 
-## Plan at a glance
+## Status and planning assumptions
 
-| Phase | Focus | Sub-phases | Suggested time | Exit condition |
-| --- | --- | --- | --- | --- |
-| 1 | Foundation and skeleton | 1.1 to 1.4 | Weeks 1-2 | Health endpoint works, 5 dashboard routes load, CI is green |
-| 2 | Data and ML baseline | 2.1 to 2.6 | Weeks 3-6 | ML gate: reproducible training and evaluation report |
-| 3 | Backend, detection and policy | 3.1 to 3.7 | Weeks 7-9 | Every PRD section 7 endpoint validated and tested |
-| 4 | Dashboard | 4.1 to 4.5 | Weeks 10-11 | Live and historical views run on real API data |
-| 5 | Simulation and integration testing | 5.1 to 5.4 | Weeks 12-13 | Simulation gate: critical tests pass |
-| 6 | Isolated Linux lab | 6.1 to 6.5 | Weeks 14-16 | Linux lab gate: enforcement, expiry, recovery verified |
-| 7 | Release hardening | 7.1 to 7.3 | Week 17 | Release gate: docs complete, no critical security issues |
+Status reflects the repository snapshot inspected on 2026-10-25. A file or
+directory is not evidence that its intended behavior is implemented.
+Statuses should be changed only when review and the phase's acceptance
+evidence support the change.
 
-Times are proposals for part-time work. Adjust them to your schedule, but keep the order.
-
-**Working rules for every phase**
-
-- Build in dependency order: storage, ingestion, features, detection, policy, safety gate, adapters, API, dashboard.
-- Write tests together with the code, not after it.
-- Keep `MITIGATION_MODE=simulation` everywhere until the Linux lab gate passes.
-- Feature definitions live only in `backend/app/features/`. Training scripts and notebooks import them; nothing is duplicated.
-- Use one Git branch per phase and merge only when the phase exit condition is met.
-- If the ML targets are not met, improve data, features or policy. Do not enable enforcement early.
-
-## Pre-coding fixes (resolved)
-
-The five inconsistencies found earlier are resolved in PRD v1.1, the README, `.env.example`, `backend/pyproject.toml` and SYSTEM\_ARCHITECTURE.md. Treat the table below as the project baseline.
-
-| Item | Decision now in the repo |
+| Status | Meaning |
 | --- | --- |
-| Auth default | `API_AUTH_REQUIRED=true` with a local `API_AUTH_TOKEN` placeholder |
-| Dependencies | `backend/pyproject.toml`, installed with `pip install -e "backend[dev]"` |
-| Database | `sentrix.db` (`sqlite:///./sentrix.db`) |
-| License | No license claim for now. Add a `LICENSE` file only when you pick one |
-| Operator endpoints | `POST /api/v1/mitigations/{id}/cancel`, `POST /api/v1/mitigations/disable`, `GET /api/v1/audit` |
+| Not started | No implementation evidence for the functional deliverable. |
+| In progress | Some files or scaffolding exist, but planned behavior is incomplete. |
+| Implemented but not verified | Relevant implementation exists; required tests or evidence have not been recorded. |
+| Verified complete | Acceptance criteria pass and evidence is recorded. |
+| Blocked | A required dependency or decision prevents safe/correct progression. |
 
-Resolved setup and API details:
-
-- The README starts Uvicorn from the repository root after installing the editable `app*` package from `backend/`.
-- Authorized audit export is included as an optional `format=json|csv` query parameter on `GET /api/v1/audit`; JSON is the default.
-
-## Phase 1: Foundation and skeleton
-
-Covers: NFR-07, NFR-10. Goal: a running empty system with a repeatable setup.
-
-### 1.1 Repository and tooling
-
-Done when: a fresh clone has the full folder tree and ignore rules.
-
-1. **Repository.** Run `git init`. Add the root `.gitignore` (`data/`, `*.db`, `.env`, `__pycache__/`, `node_modules/`, model binaries if not using Git LFS), `.env.example` and, once you choose a license, `LICENSE`.
-2. **Folder tree.** Create the structure from the README, with placeholder files in empty folders. Put it in `scripts/setup_dev.sh`.
-
-### 1.2 Backend skeleton
-
-Done when: the API starts and `/api/v1/health` passes a pytest smoke test.
-
-1. **Backend package.** Maintain `backend/pyproject.toml` with fastapi, uvicorn, pydantic-settings, sqlalchemy, alembic, scikit-learn, joblib, pandas, numpy and pyyaml as runtime dependencies; include pytest, httpx and ruff in the `dev` extra. Install with `pip install -e "backend[dev]"`.
-2. **Settings.** In `core/config.py`, load and validate environment variables. Reject an unknown `MITIGATION_MODE` and refuse to start in `linux_lab` mode unless an explicit authorization setting is present.
-3. **Error contract.** In `core/errors.py`, implement the PRD error format (`code`, `message`, `request_id`) with the status codes from PRD section 7.3. Never return stack traces.
-4. **First endpoint.** Add `GET /api/v1/health` and a pytest smoke test.
-5. **Database.** In `storage/database.py`, set up the SQLAlchemy engine for SQLite and initialize Alembic.
-
-### 1.3 Frontend skeleton
-
-Done when: all 5 routes load inside the sidebar layout.
-
-1. **Next.js app.** Run `create-next-app` (TypeScript, Tailwind) and add Recharts.
-2. **Layout and routes.** Build the fixed sidebar with the 5 routes: Overview, Alerts, Mitigation, History, Settings. Pages can be empty.
-3. **API client.** Add `lib/api.ts` with a typed client for `/api/v1`.
-
-### 1.4 Continuous integration
-
-Done when: the pipeline is green on every push.
-
-1. **Workflow.** Add a GitHub Actions workflow that runs ruff and pytest for the backend, plus lint and build for the frontend.
-
-**Exit:** baseline requirements approved, `/api/v1/health` returns OK, all 5 dashboard routes load, CI passes.
-
-## Phase 2: Data and ML baseline
-
-Covers: FR-01 to FR-04, FR-15, NFR-01, NFR-02, NFR-09. Goal: a trustworthy model comparison before any detection logic is built.
-
-### 2.1 Dataset acquisition and review
-
-Done when: datasets are downloaded, documented and understood.
-
-1. **Datasets.** Download CIC-DDoS2019 (primary) and optionally CIC-IDS2017. Record source, license, version and file hashes in `data/README.md`. Confirm what each label means.
-2. **Exploration (notebook 01).** Check class balance, missing values, infinite values and duplicate rows. Note that CIC column names often have leading spaces.
-
-### 2.2 Data preparation and split
-
-Done when: `ml/prepare_data.py` produces the same train, validation and test files on every run.
-
-1. **Data preparation (`ml/prepare_data.py`).**
-   - Validate the schema and normalize column names.
-   - Drop or fix NaN and infinite values.
-   - Map labels to normal and attack.
-   - Write a dataset version and hash into the output.
-2. **Leakage-aware split.** Split by capture day, attack type or time period instead of random rows. Use a fixed seed and save the split manifest so the split can be reproduced.
-
-### 2.3 Feature engineering
-
-Done when: `features-v1` is defined once and used by training and inference.
-
-1. **Feature definition (notebook 02, then `features/definitions.py`).**
-   - Version the schema as `features-v1`: names, units, order and preprocessing.
-   - Map dataset columns to the PRD features: packets per second, bytes per second, SYN rate, SYN-to-ACK ratio, new flows per second, flow duration, unique sources per window, rolling averages and burst statistics.
-   - CIC files are flow-level, so window features (new flows per second, unique sources) must be derived by grouping flows into time windows. Build this in `features/windows.py`.
-   - Drop any feature that is not available at inference time or that leaks the label or future data.
-
-### 2.4 Model training
-
-Done when: both candidate models are trained and saved from config.
-
-1. **Random Forest (`train_rf.py`).** Use class weighting, tune tree count and depth on validation data, and use group-aware cross-validation.
-2. **Isolation Forest (`train_iforest.py`).** Fit on benign traffic only. Tune the decision threshold on a separate labeled validation set. Document the score convention.
-
-### 2.5 Evaluation and error analysis
-
-Done when: both models have a full metric set on the held-out test set.
-
-1. **Evaluation (`evaluate.py`).** Report precision, recall, F1, confusion matrix and false-positive rate. Measure p95 inference latency per observation, CPU and memory in a documented environment.
-2. **Error analysis.** Inspect false positives and false negatives, especially SYN-flood-like cases.
-
-### 2.6 Export and report
-
-Done when: artifacts are versioned and the selection decision is written down.
-
-1. **Export (`export_model.py`).** Write `models/rf-1.0.0/` containing `model.joblib`, `feature_schema.json` and `metrics.json` with thresholds. Do the same for `iforest-1.0.0/`. Add an approved-model pointer.
-2. **Report.** Write `docs/model_evaluation_report.md` with the comparison, limitations, dataset-specific results and the model-selection decision.
-
-**Exit (ML gate):** the pipeline reruns from raw data to artifacts and gives the same result, and metrics are documented. Targets are 90% precision, 90% recall and p95 latency under 100 ms. If a target is missed, either improve features and data or explicitly accept the deviation in the report.
-
-## Phase 3: Backend, detection and policy
-
-Covers: FR-05, FR-06, FR-07, FR-10, FR-11, FR-15, NFR-03, NFR-04, NFR-06, NFR-07. Goal: the full pipeline working through the API, in simulation mode.
-
-Build in this order. Each step gets unit tests.
-
-### 3.1 Storage layer
-
-Done when: all tables and repositories exist with tests.
-
-1. **Storage (`storage/`).** Tables for flow observations, detection events, alerts, mitigation actions, threshold configuration, model versions and audit events. Add repositories and an append-only `audit.py`.
-
-### 3.2 Ingestion and runtime features
-
-Done when: valid input is accepted and invalid input is rejected without side effects.
-
-1. **Ingestion (`ingestion/`).** Pydantic schemas that match the PRD example request. Validate ranges, types, timestamp format (UTC ISO 8601), window size and feature-schema version. Invalid input returns 422 and never triggers mitigation (TC-05).
-2. **Runtime features.** Finish `windows.py` and `preprocess.py` so inference uses the exact same code as training.
-
-### 3.3 Detection engine
-
-Done when: an observation returns a model-specific score with model version and timestamp.
-
-1. **Model loader.** `model_loader.py` loads the approved artifact and refuses to start if its feature-schema version does not match.
-2. **Predictor.** `predictor.py` returns a model-specific score with model version and timestamp. Never treat Isolation Forest scores as probabilities.
-
-### 3.4 Policy engine
-
-Done when: the decision table below is fully covered by unit tests.
-
-1. **Policy engine (`policy/`).** Implement the decision table below.
-2. **Cooldowns and allowlist.** Add `cooldown.py` for cooldowns and deduplication (TC-07) and `allowlist.py` for protected management targets (TC-06).
-
-**Policy decision table**
-
-| ML signal | Threshold signal | Outcome |
+| Work area | Snapshot status | Repository evidence |
 | --- | --- | --- |
-| No | No | Continue monitoring |
-| Yes | No | Alert and gather more evidence |
-| No | Yes | Alert. Emergency action only if emergency criteria and safety checks pass |
-| Yes | Yes | Request a bounded rate limit after safety validation |
-| Any | Protected target or unauthorized | Deny or constrain |
-| Any | Policy or enforcement failure | Stop new enforcement requests and alert the operator |
-
-### 3.5 Safety gate and mitigation
-
-Done when: no mitigation can reach an adapter except through the gate.
-
-1. **Safety gate (`safety/gate.py`).** Check authorization, target validity, action bounds (rate, burst, duration, concurrency) and the current mode. The gate is the only path to an adapter.
-2. **Mitigation (`mitigation/`).** Define the adapter interface in `base.py`, implement `simulation.py` (no host changes) and `lifecycle.py` with the states proposed, simulated, applied, expired, failed and recovered. Audit every state change.
-
-### 3.6 Pipeline service
-
-Done when: one call runs the whole chain and stores each result.
-
-1. **Pipeline (`services/pipeline.py`).** Chain ingestion, features, detection, policy, safety gate and adapter, storing each result.
-
-### 3.7 Authentication and API routes
-
-Done when: every endpoint matches its documented schema and authorization tests pass.
-
-1. **Authentication.** Add roles (for example viewer and admin). Threshold changes, cancel and disable require admin.
-2. **API routes.** Implement all PRD v1.1 section 7 endpoints, including mitigation cancel, mitigation disable and audit. Support authorized audit export with `format=json|csv` (default `json`). Add pagination and filters (time, severity, status) to alerts and mitigations (FR-14), and rate limiting that returns 429.
-
-**Exit:** every endpoint matches its documented schema, authorization tests pass, and a request sent to `/traffic/flows` produces a stored detection, alert and simulated action.
-
-## Phase 4: Dashboard
-
-Covers: FR-08, FR-14, NFR-08. Goal: an honest, readable view of real backend data.
-
-### 4.1 Test data source
-
-Done when: a script feeds normal and abnormal traffic to the running API.
-
-1. **Traffic script.** Before building pages, write `scripts/send_test_traffic.py` to post normal and abnormal observations to the API. Without it the dashboard has nothing real to show, and the PRD forbids presenting sample data as live.
-
-### 4.2 Shared UI building blocks
-
-Done when: every page can reuse polling, state banners and the mode badge.
-
-1. **Shared pieces.** `lib/polling.ts` (a polling hook with last-update time), `StatusBanner` (loading, empty, stale, disconnected, error), and `ModeBadge` that clearly separates normal, suspicious, simulated and enforced states.
-
-### 4.3 Monitoring pages
-
-Done when: Overview and Alerts show real data with filters.
-
-1. **Overview.** Packet and byte rates, threat status, model health, open alerts, mitigation status, recent events and trends.
-2. **Detection and Alerts.** Flow and window features, prediction, score with its documented meaning, model version, and filters by severity, time and status.
-
-### 4.4 Control and history pages
-
-Done when: operators can review, cancel and disable actions, and read history.
-
-1. **Mitigation.** Current mode, action list with reason, duration, expiration and cleanup status, plus authorized cancel and emergency disable controls with confirmation dialogs.
-2. **History and Analytics.** Historical trends, alert and mitigation timeline, audit records and export for authorized roles.
-3. **Settings and Model Evaluation.** Threshold configuration (admin only), model version and evaluation metrics.
-
-### 4.5 Accessibility and access control
-
-Done when: the dashboard is usable by keyboard and respects roles.
-
-1. **Accessibility.** Keyboard navigation, text labels next to colors, readable contrast, and a sidebar that collapses on small screens.
-2. **Auth in the UI.** Hide or disable admin actions for non-admin roles. The backend still enforces the check.
-
-**Exit:** all five pages show real API data, every error and stale state displays correctly, and the simulation-versus-enforced distinction is always visible.
-
-## Phase 5: Simulation and integration testing
-
-Covers: FR-09, NFR-05, TC-01 to TC-08, TC-11. Goal: prove the system is safe and correct before touching real networking.
-
-### 5.1 Automated test cases
-
-Done when: every listed test case exists as an automated test.
-
-1. **Test cases.** Write automated tests for TC-01 normal traffic, TC-02 abnormal burst, TC-03 suspected SYN flood, TC-04 emergency threshold, TC-05 invalid values, TC-06 protected management traffic, TC-07 repeated alerts, TC-08 simulation safety and TC-11 unauthorized operator.
-
-### 5.2 Simulation safety proof
-
-Done when: it is shown that simulation never changes host networking.
-
-1. **No-network-change proof (TC-08).** Run the full flow in a container or VM. Compare `nft list ruleset` and `tc qdisc show` before and after, and assert that the simulation adapter never calls a subprocess.
-
-### 5.3 Security and integration tests
-
-Done when: unsafe requests are denied and the full path is tested end to end.
-
-1. **Security tests.** Unauthorized and malformed requests, invalid or protected targets, oversized payloads, and checks that no secrets or stack traces leak in errors.
-2. **Integration tests.** One test that runs from `POST /traffic/flows` through to a recorded simulated mitigation, including cooldown and expiry.
-
-### 5.4 Performance and fixes
-
-Done when: measured numbers are recorded and open failures are fixed.
-
-1. **Performance tests.** Measure latency percentiles, throughput, CPU and memory under load. Report measured values and do not claim real-time performance beyond them.
-2. **Fix and document.** Record failures, fix them, and keep the results for the release checklist.
-
-**Exit (simulation gate):** all critical detection, policy, authorization and no-network-change tests pass.
-
-## Phase 6: Isolated Linux lab
-
-Covers: FR-12, FR-13, NFR-04, NFR-10, TC-09, TC-10, TC-12. Goal: controlled enforcement, only inside an isolated lab.
-
-### 6.1 Lab environment and threat model
-
-Done when: the isolated lab exists and the threat model is written.
-
-1. **Lab environment.** Use Linux virtual machines or network namespaces on an isolated, host-only network. Designate one lab interface and one test subnet. Nothing in the lab may reach outside systems.
-2. **Threat model.** Write `enforcement/README.md`: what the agent can change, who can talk to it, and what happens if the API is compromised.
-
-### 6.2 Enforcement agent
-
-Done when: the agent applies and removes only its own rules, from validated objects only.
-
-1. **Agent design (`enforcement/agent.py`).**
-   - Runs as a separate privileged process. The FastAPI process stays unprivileged.
-   - Listens on a local Unix socket with restricted permissions.
-   - Accepts only validated policy objects (target, rate, burst, TTL). It never accepts shell commands or rule expressions.
-   - Refuses any target outside the lab interface and subnet.
-2. **Rule wrapper (`rules.py`).** Use a dedicated nftables table or tc class owned by SENTRIX, so cleanup never touches administrator rules. Tag every rule with its action ID.
-3. **Expiry (`expiry.py`).** Remove rules at their TTL, then verify removal and report the result.
-
-### 6.3 API-side integration
-
-Done when: the API can request enforcement only through the adapter and gate.
-
-1. **Adapter (`mitigation/linux_lab.py`).** A client of the agent behind the same adapter interface. It is selectable only with explicit configuration and authorization.
-2. **Reconciliation (`mitigation/reconcile.py`).** On service start, compare stored action states with actual lab rules and fix mismatches before enforcement resumes (TC-12).
-
-### 6.4 Recovery and lab traffic
-
-Done when: a cleanup failure has a tested recovery path and lab traffic is ready.
-
-1. **Recovery.** Write `enforcement/recovery.md` for cleanup failure (TC-10) and test that a failure raises an operator alert and stops new enforcement.
-2. **Lab traffic.** Build a bounded generator in `collector/` and `scripts/` for benign and attack-like traffic. Use it only against your own lab targets, with strict rate and count limits. Keep this lab data separate from data used to tune thresholds, and evaluate the chosen model on it.
-
-### 6.5 Lab tests
-
-Done when: all three lab test cases pass.
-
-1. **Run tests.** TC-09 rule expiration verified, TC-10 cleanup failure and recovery, TC-12 service restart reconciliation.
-
-**Exit (Linux lab gate):** enforcement, expiration, restart reconciliation and recovery are all verified in isolation.
-
-## Phase 7: Release hardening
-
-Goal: pass the release gate and make the project reproducible for others.
-
-### 7.1 Documentation
-
-Done when: every command in the README works from a clean clone.
-
-1. **Documentation.** Complete `docs/operations.md`, `docs/recovery.md`, `docs/api_schemas.md` and `docs/release_checklist.md`. Fix the README so every command works from a clean clone.
-
-### 7.2 Security and deployment review
-
-Done when: no critical issue is open and all three environments are verified.
-
-1. **Security review.** Check there are no hardcoded secrets, authentication is on by default, admin routes are protected and the emergency disable works.
-2. **Deployment check.** Verify Environment A (local), Environment B (web, enforcement disabled) and Environment C (lab). Do not assume serverless hosting can run collectors or privileged networking.
-
-### 7.3 Final gates and demo
-
-Done when: all 4 gate results are recorded and the demo runs.
-
-1. **Final run.** Execute the 4 release gates in order: ML, simulation, Linux lab, release. Record the results.
-2. **Demo and write-up.** Prepare a short demo script covering normal traffic, a simulated attack, an alert, a simulated mitigation and its expiry. Describe known limitations honestly: the project is a research and defensive prototype, not production DDoS protection.
-
-**Exit (release gate):** no unresolved critical security issues, emergency disable and operations documentation complete.
-
-## Requirement coverage by phase
-
-| Requirements | Built in |
+| Python package | In progress | `backend/pyproject.toml` declares Python 3.10+ and backend/development dependencies; editable installation succeeded locally on Python 3.14, while a clean Python 3.10 CI run is pending. |
+| Backend bootstrap | In progress | Validated settings, request IDs, sanitized error responses, and authenticated `GET /api/v1/health` are implemented; Phase 1 tests pass locally, but hosted CI has not run. |
+| Backend features and API | In progress | Module paths exist, but the planned end-to-end API, detection, policy, storage, and mitigation behavior is not established. |
+| Tests | In progress | Phase 1 settings, health, error, and migration tests exist and pass locally; broader planned workflows remain untested/unimplemented. |
+| Dataset/model workflow | In progress | ML scripts, notebooks, config, and artifact paths exist; reproducible evaluation and model approval are not established. |
+| Frontend | In progress | Next.js/React/TypeScript/Tailwind/Recharts dependencies, lockfile, scripts, accessible navigation, and five scaffold routes exist; local lint, type-check, and production build pass, but pages do not consume backend data. |
+| CI | In progress | `.github/workflows/ci.yml` defines backend and frontend checks; the first hosted workflow result is pending. |
+| Generator, replay, collector, lab tooling | In progress | Script paths exist, but inspected helpers are placeholders; their planned capabilities are not established. |
+| Documentation deliverables | In progress | Several docs exist as short placeholders; requirements, architecture, and README describe intended behavior. |
+| Simulation/lab/release gates | Blocked | Required test evidence is absent. Lab enforcement cannot proceed before the simulation gate and explicit lab approval. |
+
+No work area is **Verified complete** in this snapshot. Re-check files and run
+the relevant tests before updating these statuses; Phase 1 remains open until
+the configured workflow passes in hosted CI. The intended configuration
+baseline is `MITIGATION_MODE=simulation`,
+`DATABASE_URL=sqlite:///./sentrix.db`, and `API_AUTH_REQUIRED=true`. The
+`.env.example` also contains a development-only token placeholder; never
+commit a real token.
+
+## Readiness before Phase 1
+
+Resolve and record implementation details that the PRD and architecture leave
+open. This readiness work is not a numbered implementation phase and does not
+change the architecture's Phase 1–7 numbering.
+
+| Decision | Required resolution before affected work |
 | --- | --- |
-| FR-01, FR-03, FR-04 | Phase 2 |
-| FR-02, FR-15, NFR-09 | Phases 2 and 3 |
-| FR-05, FR-06, FR-07, FR-10, FR-11 | Phase 3 |
-| FR-08, FR-14 | Phase 4 |
-| FR-09, NFR-05, TC-01 to TC-08, TC-11 | Phases 3 and 5 |
-| FR-12, FR-13, TC-09, TC-10, TC-12 | Phase 6 |
-| NFR-01, NFR-02 | Phases 2 and 5 |
-| NFR-03, NFR-04, NFR-06, NFR-07 | Phase 3, tested in Phase 5 |
-| NFR-08 | Phase 4 |
-| NFR-10 | Phases 1, 6 and 7 |
+| Feature schema and model selection | Define runtime-available feature names, units, ordering, window semantics, preprocessing, score convention, and approval evidence. Model selection remains evidence-based; neither candidate is presumed selected. Required before Phase 2 approval and Phase 3 inference. |
+| API details | Define request/response schemas, status codes, filtering/pagination parameters, request-size limits, and error examples in `docs/api_schemas.md`. Required before corresponding Phase 3 endpoint implementation. |
+| Demonstration file replay | Approve a bounded file format, record validation behavior, and source labeling. Required before Phase 5 replay implementation. |
+| Threshold and mitigation bounds | Define threshold configuration and bounded action parameters, including maximum duration and concurrency. Missing/invalid bounds must fail closed. Required before Phase 3 policy behavior and Phase 5 simulation acceptance. |
+| Authentication/authorization | Define a minimal permission matrix for threshold updates, cancellation, emergency disable, audit access, and lab approval; do not assume a complete identity provider or role system. Required before protected endpoints are enabled. |
+| Persistence | Define required SQLite fields and migration behavior; decide retention separately rather than inventing a value. Required before schema is frozen. |
+| Lab approval | Identify the authorized approver and evidence required to enable the isolated lab path. Required before Phase 6 actions are applied. |
 
-## Main risks and how the plan handles them
+Until these details are decided, affected paths remain disabled or fail closed.
+The policy outcomes and lifecycle transitions themselves are aligned with the
+architecture:
 
-- **Dataset does not match your lab traffic.** Validate the chosen model on separate lab traffic in Phase 6 and document the gap.
-- **Inflated metrics from leakage.** Split by capture or time and keep lab data away from threshold tuning.
-- **False positives disrupt legitimate traffic.** Require both signals for normal actions, bound every action, use allowlists and cooldowns, and always allow operator disable.
-- **Enforcement privilege misuse.** Keep the agent separate, accept only validated objects and own only its own rules.
-- **Schedule slips in Phase 2.** The ML baseline decides whether the project works. Finish it before spending time on the dashboard polish.
+- Neither detection signal: continue monitoring.
+- Exactly one signal: alert and gather evidence; do not initiate mitigation.
+- Both signals: consider a bounded request through the safety gate.
+- `simulated` is terminal and never represents an applied network change.
+- `expired` applies to an applied lab action after verified removal of its
+  SENTRIX-owned change.
+
+## Dependency order and release gates
+
+```text
+Phase 1 foundation
+    -> Phase 2 offline data and ML evaluation/approval
+    -> Phase 3 storage, ingestion, features, inference, policy, safety, API
+    -> Phase 4 dashboard integration
+    -> Phase 5 generated/file-replayed demo and simulation safety gate
+    -> Phase 6 separately approved isolated Linux lab
+    -> Phase 7 release hardening
+```
+
+The frontend skeleton may begin during Phase 1; data integration depends on
+Phase 3 API contracts. Training and runtime must use the same feature
+definitions. Linux enforcement cannot bypass simulation proof, isolated-lab
+validation, recovery, or explicit approval. Elapsed time is never an exit
+criterion; estimates, if later added, are planning aids only.
+
+## Phase 1 — Foundation and skeleton
+
+**Objective:** Establish a repeatable backend/frontend foundation with minimal
+health and navigation surfaces.
+
+**Dependencies:** Readiness decisions for the initial setup scope.
+
+| Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
+| --- | --- | --- | --- |
+| 1.1 Backend setup and configuration | Verify `backend/pyproject.toml`; implement configuration validation, logging, and error handling in `backend/app/core/config.py`, `logging.py`, and `errors.py`; wire the FastAPI app in `backend/app/main.py`. Keep simulation, SQLite URL, and auth-required defaults. | A clean Python 3.10+ environment installs via `python -m pip install -e "backend[dev]"`. Settings tests cover defaults and invalid/unsafe modes; error tests verify the documented error shape and no secret/stack-trace leakage. | `.env.example` exists, but loading/validation behavior is not yet established. |
+| 1.2 Health endpoint and SQLite base | Implement `GET /api/v1/health`; configure SQLAlchemy and migration setup using declared dependencies and `backend/migrations/`. | Health smoke test matches the approved contract; DB initialization/migrations are repeatable and isolated tests do not modify developer data. | Exact health exposure/auth behavior follows the approved API contract; auth is required by default. |
+| 1.3 Frontend skeleton | Configure `frontend/package.json` and implement the five dashboard routes and navigation under `frontend/src/` using Next.js, React, TypeScript, Tailwind CSS, and Recharts. | Fresh frontend install/build/lint commands are declared and pass; five routes load and keyboard/responsive navigation is checked. | Current manifest has no dependencies/scripts; do not claim it runs now. |
+| 1.4 Continuous integration | Add the planned CI workflow for backend lint/tests and frontend lint/build using the project’s selected commands. Keep local commands consistent with CI. | CI is green for the phase change; backend and frontend checks are reproducible locally. | No CI workflow exists in the inspected tree; select frontend tooling while configuring its manifest. |
+
+**Phase exit:** Fresh-environment setup is reproducible, the health endpoint
+works, all five dashboard routes load, and CI is green. This does not claim
+that detection or mitigation exists.
+
+## Phase 2 — Data and ML baseline
+
+**Objective:** Reproducibly prepare data, compare both candidate models, and
+document model selection before runtime use.
+
+**Dependencies:** Phase 1 Python environment; readiness decisions for dataset
+provenance, labels, feature schema, and evaluation splits.
+
+| Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
+| --- | --- | --- | --- |
+| 2.1 Dataset acquisition/review | Use CIC-DDoS2019 as primary candidate and CIC-IDS2017 only where supported. Record source, version, license, hashes, schema, and label meanings in `data/README.md`; do not commit datasets unless separately approved. | Dataset review records provenance/license and confirms feature availability and label semantics. | Dataset files are not present in the current snapshot. |
+| 2.2 Preparation and split | Implement validation, cleaning, label mapping, deterministic leakage-aware split, and manifest generation in `ml/prepare_data.py`. Inspect missing/infinite values, duplicates, class balance, and schema. | Tests and repeat-run evidence demonstrate stable outputs/manifests; splits reduce leakage by capture/source/time where feasible. | Dataset-specific handling rules must be documented, not guessed. |
+| 2.3 Shared feature preparation | Define the versioned feature schema in `backend/app/features/definitions.py`; implement reusable preprocessing/window aggregation for training and runtime in `backend/app/features/preprocess.py` and `windows.py`. | Golden tests confirm names, units, order, windows, and transforms match for training/runtime and exclude labels/future data. | Final schema depends on dataset and runtime input availability. |
+| 2.4 Train/evaluate/export candidates | Implement `ml/train_rf.py`, `ml/train_iforest.py`, `ml/evaluate.py`, and `ml/export_model.py` using `ml/configs/training.yaml`. Compare both candidates on held-out data; report precision, recall, F1, confusion matrix, FPR, p95 latency, CPU, and memory. Document limitations, score conventions, selection, and artifacts in `docs/model_evaluation_report.md`. | **ML gate:** reproducible preparation; held-out evaluation separate from tuning; required metrics and limitations recorded; candidate comparison and selection rationale documented; approved versioned artifact matches the feature schema. Measure existing proposed targets (precision ≥90%, recall ≥90%, p95 latency <100 ms/observation in the documented environment); any deviation requires analysis and explicit acceptance. | Existing artifact files/metrics do not establish model approval or performance. Do not presume a winner or bypass the gate. |
+
+**Phase exit (ML gate):** Preparation and evaluation reproduce from recorded
+inputs; both candidates have comparable held-out evidence; model limitations,
+score meaning, and selection are documented; any runtime-approved artifact is
+versioned and schema-compatible.
+
+## Phase 3 — Backend, detection and policy
+
+**Objective:** Implement persistence, validated ingestion, shared runtime
+features, approved-model inference, hybrid policy, safety gate, simulation,
+and the planned API contracts.
+
+**Dependencies:** Phase 1 foundation; Phase 2 versioned feature schema and
+approved runtime artifact for inference; approved API, authorization, and
+action-bound decisions.
+
+| Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
+| --- | --- | --- | --- |
+| 3.1 Persistence | Implement SQLAlchemy models and repositories in `backend/app/storage/` for observations/summaries, detections, alerts, model/schema metadata, thresholds, mitigation lifecycle, and audit events. | Repository/migration tests cover required persistence and audit behavior, transaction outcomes, and test DB isolation. Record schema/retention decisions. | Do not infer final schema or retention. |
+| 3.2 Ingestion and runtime features | Implement Pydantic schemas/validators in `backend/app/ingestion/` and traffic routes in `backend/app/api/v1/traffic.py`. Validate types, ranges, UTC timestamps, window size, feature-schema version, and documented request limits. Reuse Phase 2 feature code. | Valid/invalid/schema-mismatch/oversized input tests; invalid input creates no mitigation; training/runtime feature fixtures match. | Limits and schema must be defined first. |
+| 3.3 Detection | Implement approved-artifact loading and prediction in `backend/app/detection/`; reject missing, incompatible, or unapproved artifacts; record model version, feature-schema version, score/prediction type, and timestamp. | Unit/API tests cover artifact errors, schema mismatch, model-specific interpretation, and persisted detection responses. Isolation Forest scores are not represented as probabilities absent validated calibration. | Requires Phase 2 approval evidence. |
+| 3.4 Policy, safety, lifecycle, simulation | Implement `backend/app/policy/`, `backend/app/safety/gate.py`, and `backend/app/mitigation/` according to architecture: neither signal monitors; one signal alerts; both may request bounded action; every adapter request passes the gate; simulation performs no host networking modification. Enforce architecture lifecycle states/transitions and audit each transition. | Unit tests cover signal matrix, protected targets, bounds, mode, authorization, forbidden transitions, simulated/applied distinction, cancellation, emergency disable, adapter failures, and audit. | All policy/action values come from approved configuration. The architecture forbids single-signal mitigation. |
+| 3.5 API contracts and integration | Wire the PRD’s 14 method/path contracts through `backend/app/main.py`, `backend/app/api/v1/`, and `backend/app/services/pipeline.py`. Implement documented filtering/pagination and audit export; do not add endpoints or alter semantics without approved requirements. | Contract tests cover methods, paths, schemas, authorization, errors/status, filters, pagination, and export. End-to-end API request creates stored detection, alert, and a simulated action where the policy requests one. | Keep planned routes marked unimplemented until tests establish behavior. |
+
+**Phase exit:** Every PRD section 7 endpoint is validated and tested;
+authorization tests pass; valid traffic submission produces a stored
+detection, alert, and simulated action when requested by policy; invalid and
+unauthorized requests cannot reach an adapter; simulation and lifecycle
+outcomes are auditable.
+
+## Phase 4 — Dashboard
+
+**Objective:** Present live and historical backend data accurately and expose
+authorized operator controls without treating the UI as an authorization
+boundary.
+
+**Dependencies:** Phase 1 frontend skeleton and Phase 3 stable API contracts.
+
+| Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
+| --- | --- | --- | --- |
+| 4.1 API client and status components | Implement typed API calls and polling in `frontend/src/lib/api.ts` and `polling.ts`; add loading, empty, stale, disconnected, error, mode, and lifecycle indicators in existing components. | Contract/integration tests cover response parsing, time/source labels, error paths, and backend state fidelity. | Do not use hard-coded mock data as live readings. |
+| 4.2 Monitoring and history pages | Implement Overview, Alerts, Mitigation, History, and Settings pages in `frontend/src/app/`; display detection score interpretation, model/schema versions, alerts, lifecycle, audit, and threshold configuration as authorized. | Five pages consume API data; tests verify states match backend and simulated actions never appear applied. | Requires functional API responses. |
+| 4.3 Protected controls and accessibility | Provide role-aware threshold, cancellation, and emergency-disable controls with confirmations; keyboard operation, readable labels, and responsive navigation. | UI checks verify controls and accessibility; backend authorization tests remain mandatory and independent. | Exact role mapping must be approved. |
+
+**Phase exit:** Live and historical views use real API data; lifecycle/mode,
+demonstration provenance, error, and stale states are accurate; sensitive
+controls respect permissions and do not substitute for backend authorization.
+
+## Phase 5 — Simulation and integration testing
+
+**Objective:** Complete the generated/file-replayed end-to-end demonstration
+and prove safe simulation before considering real networking changes.
+
+**Dependencies:** Phase 3 API/pipeline/simulation; Phase 4 data integration;
+approved file-replay format and bounded generator behavior.
+
+| Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
+| --- | --- | --- | --- |
+| 5.1 Generator and replay | Implement bounded demonstration flow generation and prepared-file replay using approved formats in `scripts/` and/or `collector/`; route both through the same API ingestion and runtime pipeline. Mark both sources as demonstration data, not live telemetry. | TC-14 verifies the shared path, source labeling, deterministic fixtures, validation parity, and bounded operation. Do not introduce formats/CLI options without approval. | Existing scripts are placeholders; file format remains a prerequisite decision. |
+| 5.2 Integration and policy tests | Exercise normal traffic (TC-01), abnormal burst (TC-02), suspected SYN flood (TC-03), threshold-only input (TC-04), invalid input (TC-05), protected targets (TC-06), repeated alerts/cooldown (TC-07), unauthorized operators (TC-11), hybrid outcomes (TC-13), cancellation/disable (TC-15), and lifecycle/audit (TC-16). Include persistence, failure paths, and API reporting. | Each named test passes for simulation-compatible cases and results are retained; lab-only cases TC-09, TC-10, and TC-12 remain Phase 6. | Each single signal alone must not request mitigation; architecture’s decision table controls. |
+| 5.3 Simulation safety proof | Run the full simulation flow in an isolated container/VM; assert simulation adapter never invokes privileged enforcement or networking-modification operations. Compare host firewall, routing, and traffic-control state before/after where available. | TC-08 passes with adapter-call assertions and reproducible before/after evidence; no host changes occur. | Never perform tests against public or third-party systems. |
+| 5.4 Reliability and performance | Test restart persistence, malformed/oversized input, missing model, policy/adapter failures, and measured latency, throughput, CPU, and memory. | Failure outcomes are visible/audited; performance evidence is recorded against PRD targets without assuming they pass. | Isolated test environment and documented workload required. |
+
+**Phase exit (simulation gate):** End-to-end generator and replay tests,
+critical detection/policy, authorization, bounds, cancellation, emergency
+disable, lifecycle/audit, failure handling, and no-network-change tests pass;
+evidence is recorded; simulation remains default. Passing this gate does not
+authorize Linux enforcement.
+
+## Phase 6 — Isolated Linux lab
+
+**Objective:** If pursued and explicitly approved, implement and verify
+restricted enforcement only within the designated isolated Linux lab.
+
+**Dependencies:** Phase 5 simulation gate; explicit lab authorization;
+approved target restrictions, action bounds, ownership, reconciliation, and
+recovery procedures.
+
+| Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
+| --- | --- | --- | --- |
+| 6.1 Isolation and threat model | Define isolated VM/network namespace, host-only network, designated interface/test subnet, permitted targets, and threat model in `enforcement/README.md`. | Review configuration and test that lab traffic cannot reach outside systems. | Lab approval authority and procedures must be defined. |
+| 6.2 Restricted enforcement | Implement separate privileged agent/rules in `enforcement/agent.py` and `rules.py`, expiry in `enforcement/expiry.py`, and API-side adapter in `backend/app/mitigation/linux_lab.py`. Keep FastAPI unprivileged; accept validated policy objects only; use `nftables` and/or `tc` only within approved scope. | Tests reject arbitrary commands, unauthorized targets, unbounded values, and disabled mode; verify only designated interface/subnet and SENTRIX-owned resources can change. | Remain disabled until all prerequisites and explicit approval. |
+| 6.3 Expiry, cleanup, reconciliation, recovery | Complete `backend/app/mitigation/reconcile.py` and `enforcement/recovery.md`; reconcile persisted actions against lab state on restart before enforcement resumes. | TC-09, TC-10, TC-12 pass in isolation, including cleanup failure, process restart, uncertain state, recovery, and proof unrelated rules remain unchanged. | Any uncertainty keeps enforcement disabled. |
+| 6.4 Lab enablement | Record simulation, authorization, bounds, cancellation, emergency-disable, isolated lab, cleanup, reconciliation, recovery, and required release-gate evidence; record explicit approval. | Enablement tests demonstrate missing approval/configuration, failed gates, or unreconciled state all block enforcement. No automatic simulation fallback. | Test authorization for isolated verification is distinct from approval to enable enforcement operationally. |
+
+**Phase exit (Linux lab gate):** Bounded enforcement, expiry, SENTRIX-owned
+cleanup, restart reconciliation, failure blocking, and recovery are verified
+and documented in isolation; explicit approval is recorded. Outside that
+approved lab, and whenever state is uncertain, enforcement remains disabled.
+
+## Phase 7 — Release hardening
+
+**Objective:** Assemble evidence and documentation for a release decision
+without overstating performance, safety, or protection.
+
+**Dependencies:** Applicable ML, simulation, and Linux lab gates; open
+release blockers resolved or explicitly accepted by the authorized project
+decision-maker.
+
+| Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
+| --- | --- | --- | --- |
+| 7.1 Regression and security review | Run applicable backend, ML, frontend, integration, security, and isolated-lab tests. Review configuration defaults, authentication/authorization, audit, error leakage, secret handling, and findings. | Evidence corresponds to the release candidate; no unresolved critical security issue remains. |
+| 7.2 Documentation and reproducibility | Complete and cross-check README, PRD, architecture, `docs/api_schemas.md`, `docs/model_evaluation_report.md`, `docs/operations.md`, `docs/recovery.md`, `docs/release_checklist.md`, and lab documentation. | Clean-environment setup and supported operations are followed; links, commands, phase names, API, policy, lifecycle, defaults, and status are consistent. |
+| 7.3 Release decision | Record ML, simulation, Linux lab (if pursued), and release gate evidence; document accepted deviations and known limitations. | Explicit decision records scope and whether lab enforcement remains disabled or is approved only for the isolated lab. |
+
+**Phase exit (release gate):** Gate evidence is recorded; documentation is
+complete and reviewed; no unresolved critical security issue remains; known
+limitations and operating/recovery procedures are clear.
+
+## Requirement and test traceability
+
+The phase column identifies planned work, not completion. Test-case IDs refer
+to [PRD.md](PRD.md) section 10.2.
+
+| Requirement / test IDs | Phase | Verification method | Required evidence |
+| --- | --- | --- | --- |
+| FR-01 | 2 | Dataset validation, cleaning, reproducibility and split tests | Provenance/license record, cleaning results, split manifest |
+| FR-02 | 2–3 | Shared feature-schema golden tests and compatibility checks | Versioned schema, matching training/runtime output, mismatch rejection |
+| FR-03 | 2 | Candidate evaluation and selection review | Comparison, limitations, selection rationale |
+| FR-04, NFR-01, NFR-02 | 2, 5, 7 | Held-out evaluation and documented performance measurement | Required metrics, workload/environment, target deviations and approval |
+| FR-05, NFR-03, TC-05 | 3, 5 | API schema/range/size validation tests | Invalid requests rejected with no mitigation side effect |
+| FR-06 | 3 | Predictor and artifact tests | Model/schema versions, score type, timestamp, score semantics |
+| FR-07, TC-01–TC-04, TC-13 | 3, 5 | Hybrid decision matrix tests | Neither/one/both signal outcomes; single signal never initiates mitigation |
+| FR-08, NFR-08 | 4 | API/UI integration tests | Dashboard agrees with backend and distinguishes every lifecycle state |
+| FR-09, NFR-05, TC-08 | 3, 5 | Adapter assertions and isolated before/after network check | No host networking changes or privileged/network-modification operation |
+| FR-10, NFR-06 | 3, 5–6 | Persistence and audit tests | Action identity, trigger, parameters, state, outcome, and failure records |
+| FR-11, TC-07, TC-15, TC-16 | 3, 5 | Bounds/cooldown/control/lifecycle tests | Approved limits, cancellation/disable behavior, valid transitions |
+| FR-12, TC-09 | 6 | Isolated enforcement and expiry tests | Approved scope, applied action, verified expiry |
+| FR-13, TC-10, TC-12 | 6 | Cleanup failure, restart reconciliation, and recovery tests | Owned-resource evidence, no unrelated changes, fail-closed behavior |
+| FR-14 | 3–4 | API filter/pagination and UI tests | Contract tests and accurate filtered results |
+| FR-15, NFR-09 | 2–3 | Artifact inspection and reproducibility checks | Dataset, schema, model, threshold, and metric versions |
+| FR-16, TC-14 | 5 | Generator/replay integration tests | Same runtime path and visible demonstration-data source |
+| FR-17, NFR-04, TC-11 | 1, 3, 5–6 | Authentication/authorization tests | Permission matrix; unauthorized protected requests denied |
+| NFR-06, NFR-07, NFR-10 | 1, 3, 5–7 | Audit tests, module review, documentation walkthrough | Auditable outcomes; safety-gate-only adapter path; reviewed procedures |
+| TC-06 | 3, 5 | Protected-target tests | Unsafe action denied/constrained and recorded |
+| TC-09–TC-10, TC-12 | 6 | Isolated expiry, cleanup failure, restart, recovery tests | Test logs and recovery evidence |
+
+All PRD FR, NFR, and TC identifiers are mapped above. If requirements change,
+update this table and the affected phase criteria before implementation.
+
+## Open decisions and risks
+
+The documents align on single-signal policy and lifecycle transitions.
+Remaining implementation choices include:
+
+| Decision | Why it matters | Affected phase |
+| --- | --- | --- |
+| Exact feature schema and final model approval criteria | Determines training/runtime compatibility and valid model selection evidence. | 2–3 |
+| API response/query schemas and input limits | Required for interoperable, testable endpoint behavior. | 1, 3 |
+| Prepared-file replay format | Required for safe, bounded replay without invented file semantics. | 5 |
+| Minimal authentication/authorization mechanism and permission assignment | Protects administrative operations without assuming an unrequested identity platform. | 1, 3–6 |
+| Threshold values, action bounds, maximum duration, and concurrency | Needed to enforce bounded requests; missing values must fail closed. | 3, 5–6 |
+| SQLite schema and retention | Affects migrations, auditability, restart reconciliation, and storage. | 1, 3, 6 |
+| Lab approval authority and operating procedure | Required before isolated enforcement is enabled. | 6 |
+
+Risks include dataset representativeness and leakage, false positives, model
+score misinterpretation, incomplete API/authorization details, and privilege
+misuse. Mitigate through documented datasets/splits, held-out evaluation,
+model-specific score handling, default simulation, bounded/authorized
+actions, isolation, owned-resource cleanup, restart reconciliation, and
+recovery tests. No risk is considered eliminated until evidence supports it.

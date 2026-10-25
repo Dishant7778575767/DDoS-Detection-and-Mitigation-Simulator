@@ -1,4 +1,41 @@
-# FastAPI main entrypoint
-from fastapi import FastAPI
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from uuid import uuid4
 
-app = FastAPI(title="SENTRIX API")
+from fastapi import FastAPI, Request
+from fastapi.responses import Response
+from starlette.middleware.base import RequestResponseEndpoint
+
+from app.api.v1.health import router as health_router
+from app.core.config import get_settings, validate_runtime_settings
+from app.core.errors import install_error_handlers
+from app.core.logging import configure_logging
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    configure_logging()
+    validate_runtime_settings(get_settings())
+    yield
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="SENTRIX API", lifespan=lifespan)
+    install_error_handlers(app)
+    app.include_router(health_router, prefix="/api/v1", tags=["health"])
+
+    @app.middleware("http")
+    async def add_request_id(
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        request_id = f"req_{uuid4().hex}"
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+    return app
+
+
+app = create_app()

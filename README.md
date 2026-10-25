@@ -2,216 +2,336 @@
 
 > **Detect. Defend. Stay Resilient.**
 
-SENTRIX is a planned lightweight machine-learning-powered DDoS detection and mitigation system. Its target design combines flow-level network feature analysis and time-window aggregation with Random Forest and Isolation Forest models, a hybrid policy engine, safety gates, and a Next.js monitoring dashboard.
+SENTRIX is a planned defensive DDoS detection and mitigation prototype. Its
+target design analyzes flow-level network features and time-window statistics,
+compares machine-learning evidence with threshold-based rules, and routes
+eligible mitigation requests through a safety gate. A web dashboard is
+planned for monitoring detections, alerts, and action outcomes.
 
-> **Project status:** The PRD and architecture describe the target system. Features and endpoints are implemented phase by phase according to [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md); the structure may currently contain scaffolding or placeholders.
+SENTRIX is not production-ready and does not guarantee DDoS protection.
+Architecture diagrams and planned API contracts describe intended behavior;
+they do not demonstrate that a component is implemented or operational.
 
----
+## Current status
 
-## 🌟 Key Features
+The repository is an early implementation scaffold. Phase 1 now provides
+validated backend settings, a token-protected health endpoint, a SQLite
+connection/migration baseline, and a runnable frontend navigation shell. The
+frontend pages are placeholders and do not consume backend data. The remaining
+API, detection, policy, persistence domain models, mitigation, ML, generator,
+and replay workflows are not implemented. Phase 1 checks have been run locally;
+the configured hosted CI workflow has not yet reported a result.
 
-- **Traffic Ingestion & Window Aggregation**: Planned Pydantic validation for incoming network flow data with versioned window-based feature statistics.
-- **Dual ML Detection Engine**: Planned comparison of supervised (Random Forest) and unsupervised (Isolation Forest) models for threat scoring.
-- **Hybrid Policy Engine**: Planned evaluation of ML scores alongside configurable rule thresholds.
-- **Safety Gate & Simulation Adapter**: Planned bounds and authorization checks; **Simulation Mode** is the default, without host network modifications.
-- **Operator Controls & Audit**: Planned protected endpoints for canceling/disabling mitigation actions and retrieving audit records.
-- **Privileged Lab Enforcement**: A later-phase Linux enforcement agent (`tc`/`nftables`) for isolated lab environments, subject to expiry and recovery testing.
-- **Next.js Dashboard**: Planned traffic visualization, active alerts, mitigation lifecycle tracking, and system configuration controls.
+Some model artifact files exist, but the repository does not establish that a
+candidate has been evaluated and approved for runtime use. A file or module
+path alone does not prove that its planned behavior is complete.
 
----
+The implementation roadmap and exit criteria are in
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). Do not treat the presence of
+a file, model binary, endpoint module, or documentation as evidence that its
+planned behavior has passed testing.
 
-## 🛠️ Technology Stack
+## Intended workflow
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Backend API** | Python 3.10+, FastAPI, Pydantic, SQLAlchemy, SQLite |
-| **Machine Learning** | scikit-learn, joblib, pandas, NumPy, PyYAML |
-| **Frontend** | Next.js 14, React, TypeScript, Tailwind CSS, Recharts |
-| **Mitigation & Lab** | Simulation Adapter, Linux `nftables`/`tc` (Lab Mode) |
+### Offline model training
 
----
+The planned training pipeline uses public labeled flow datasets, primarily
+CIC-DDoS2019. CIC-IDS2017 is an optional secondary dataset where supported by
+the requirements and available features. The workflow will validate and clean
+data, create reproducible leakage-aware splits, apply a versioned feature
+schema, train and compare Random Forest and Isolation Forest candidates, and
+document model selection before an artifact is used for runtime inference.
 
-## 📂 Project Structure
+Neither model is presumed to be selected. Random Forest outputs and Isolation
+Forest anomaly scores have model-specific meanings; an anomaly score is not a
+probability unless a calibration method is explicitly defined and validated.
+
+### Demonstration and runtime path
+
+The intended initial demonstration accepts both generated flow records and
+prepared flow records replayed from a file. Both inputs must use the same
+runtime ingestion, validation, feature processing and window aggregation,
+inference, policy, persistence, and reporting path.
+
+Generated or replayed records are **demonstration data, not live network
+telemetry** and are not proof of real-world network protection. The generator
+and file-replay workflow are planned; the current helper scripts are
+placeholders and do not yet implement them.
+
+### Detection and mitigation behavior
+
+The target hybrid policy treats the model signal and threshold signal
+separately:
+
+- Neither indicates a threat: continue monitoring.
+- Exactly one indicates a threat: create an alert and gather evidence by
+  default; do not automatically mitigate.
+- Both indicate a threat: consider a bounded mitigation request, subject to
+  authorization, target validation, limits, mode, and all safety checks.
+
+The PRD and implementation plan follow this policy. The mitigation lifecycle
+also distinguishes terminal `simulated` outcomes from `expired` applied lab
+actions; a simulated action is never a network change.
+
+**Simulation is the default.** Simulation must not modify host firewall rules,
+routing, traffic-control settings, or other host networking, and must not
+invoke privileged enforcement or networking-modification operations. A
+simulated action is not a network change.
+
+Linux enforcement using `nftables` and/or `tc` is a later-stage, restricted
+feature for an isolated lab. It is not a normal fallback from simulation and
+must remain disabled until simulation-safety and authorization tests,
+isolated enforcement/expiry/cleanup/restart-reconciliation tests, recovery
+checks, required release gates, and explicit lab approval are complete.
+Cleanup may affect only SENTRIX-owned resources.
+
+## Technology stack
+
+| Area | Intended technology and role |
+| --- | --- |
+| Backend | Python and FastAPI for the API and modular backend; Pydantic for request validation. |
+| Persistence | SQLite, with the planned local database filename `sentrix.db`. |
+| Machine learning | scikit-learn; Random Forest and Isolation Forest are candidate models. Planned data tooling includes pandas, NumPy, joblib, and PyYAML. |
+| Frontend | Next.js is the frontend framework; React is the UI library, with TypeScript, Tailwind CSS, and Recharts. |
+| Lab enforcement | Linux `nftables` and/or `tc` in a later, isolated lab phase only. |
+
+The Python package manifest currently lists the backend dependencies in
+[backend/pyproject.toml](backend/pyproject.toml). Frontend dependencies and
+reproducible npm scripts are defined in
+[frontend/package.json](frontend/package.json) and
+[frontend/package-lock.json](frontend/package-lock.json).
+
+## Repository map
+
+This tree reflects the current repository snapshot. Paths marked **planned**,
+**placeholder**, or **scaffold** are not represented as working features.
 
 ```text
 SENTRIX/
-├── README.md                           # Project overview & getting started
-├── IMPLEMENTATION_PLAN.md              # Phased development plan and exit gates
-├── PRD.md                              # Product Requirements Document
-├── SYSTEM_ARCHITECTURE.md              # System Architecture & Mermaid Workflows
-├── .gitignore                          # Excluded patterns (data/, *.db, .env, etc.)
-├── .env.example                        # Template environment configuration
-│
-├── data/                               # Datasets (git-ignored)
-│   ├── README.md                       # Data source details, licensing & labels
-│   ├── raw/                            # CIC-DDoS2019, CIC-IDS2017 datasets
-│   ├── processed/                      # Cleaned features and train/val/test splits
-│   └── lab/                            # Controlled lab environment traffic
-│
-├── notebooks/                          # Exploration and research notebooks
-│   ├── 01_dataset_exploration.ipynb
-│   ├── 02_feature_engineering.ipynb
-│   ├── 03_random_forest.ipynb
-│   ├── 04_isolation_forest.ipynb
-│   └── 05_model_comparison.ipynb
-│
-├── ml/                                 # Reproducible ML training pipeline
-│   ├── prepare_data.py                 # Schema validation, cleaning & splitting
-│   ├── train_rf.py                     # Random Forest classifier training
-│   ├── train_iforest.py                # Isolation Forest anomaly detection
-│   ├── evaluate.py                     # Evaluation metrics (F1, FPR, Latency, CPU/RAM)
-│   ├── export_model.py                 # Versioned model artifact export
-│   └── configs/
-│       └── training.yaml               # Training hyperparameters and seed configs
-│
-├── models/                             # Versioned model artifacts
-│   ├── rf-1.0.0/                       # Model binary, schema & metrics JSON
-│   ├── iforest-1.0.0/                  # Anomaly detection model artifacts
-│   └── approved_model.joblib           # Currently active deployment model
-│
-├── backend/                            # FastAPI modular monolith
-│   ├── pyproject.toml                  # Backend package & dependencies definition
-│   ├── .gitignore
+├── README.md
+├── PRD.md
+├── SYSTEM_ARCHITECTURE.md
+├── IMPLEMENTATION_PLAN.md
+├── .env.example                   # Local settings template with a development-only token
+├── backend/
+│   ├── pyproject.toml             # Python package and dependency manifest
+│   ├── alembic.ini                # SQLite migration configuration
+│   ├── migrations/                # Migration environment and initial revision
 │   ├── app/
-│   │   ├── main.py                     # FastAPI app factory & router registration
-│   │   ├── core/                       # App settings, security, logging, error handler
-│   │   ├── api/v1/                     # REST API endpoints (health, traffic, alerts, etc.)
-│   │   ├── ingestion/                  # Traffic ingestion schemas & validation
-│   │   ├── features/                   # Feature definitions, windows & preprocessing
-│   │   ├── detection/                  # Model loaders, prediction & scoring
-│   │   ├── policy/                     # Decision engine, thresholds & cooldowns
-│   │   ├── safety/                     # Safety gate (auth, bounds, target check)
-│   │   ├── mitigation/                 # Mitigation adapters (Simulation, Linux Lab)
-│   │   ├── storage/                    # Database models, repositories & audit logs
-│   │   └── services/                   # End-to-end detection & response pipeline
-│   ├── migrations/                     # Database migration scripts
-│   └── tests/                          # Unit, integration, security & test case suites
-│
-├── enforcement/                        # Privileged Linux enforcement process (Phase 6)
-│   ├── README.md                       # Threat model & least-privilege security notes
-│   ├── agent.py                        # Privileged enforcement daemon
-│   ├── rules.py                        # tc/nftables wrapper
-│   ├── expiry.py                       # Rules TTL cleanup & verification
-│   ├── recovery.md                     # Cleanup failure recovery procedures
-│   └── tests/                          # Lab-only isolation tests
-│
-├── collector/                          # Metrics collection utilities
-│   └── lab_collector.py                # Posts flow metrics to /traffic/flows
-│
-├── frontend/                           # Next.js web dashboard
-│   ├── package.json                    # Frontend dependencies & scripts
-│   └── src/
-│       ├── app/                        # App Router pages (overview, alerts, mitigation, etc.)
-│       ├── components/                 # UI components (charts, tables, badges)
-│       ├── lib/                        # API client & polling hooks
-│       └── types/                      # TypeScript definitions
-│
-├── scripts/                            # Operational helper scripts
-│   ├── setup_dev.sh                    # Development environment setup
-│   ├── run_lab.sh                      # Isolated lab launcher
-│   └── send_test_traffic.py            # Test traffic generator fixtures
-│
-└── docs/                               # System documentation
-    ├── model_evaluation_report.md      # ML performance report
-    ├── api_schemas.md                  # REST API schemas & payload examples
-    ├── operations.md                   # Installation, operation & auditing guide
-    ├── recovery.md                     # Troubleshooting & recovery instructions
-    └── release_checklist.md            # Release gates & validation criteria
+│   │   ├── main.py                # FastAPI app with request IDs and health route
+│   │   ├── api/v1/                # Planned API modules/scaffolds
+│   │   ├── core/                  # Settings, health auth, logging, error handling
+│   │   ├── detection/             # Planned inference and model loading
+│   │   ├── features/              # Planned versioned feature pipeline
+│   │   ├── ingestion/             # Planned Pydantic schemas and validation
+│   │   ├── mitigation/            # Planned simulation and lab adapters/lifecycle
+│   │   ├── policy/                # Planned hybrid policy and safeguards
+│   │   ├── safety/                # Planned safety gate
+│   │   ├── services/              # Planned end-to-end pipeline
+│   │   └── storage/               # SQLite engine/session base; repositories and audit planned
+│   └── tests/                     # Phase 1 settings, health, and migration tests
+├── frontend/
+│   ├── package.json              # Next.js app scripts and dependencies
+│   └── src/app/                  # Accessible navigation and five placeholder routes
+├── .github/workflows/            # Backend and frontend CI checks
+├── ml/                           # Training/evaluation script placeholders and config
+├── models/                       # Artifact files present; approval/evaluation not established
+├── notebooks/                    # Dataset/model exploration notebooks
+├── data/
+│   └── README.md                 # Dataset guidance; datasets are not included
+├── collector/
+│   └── lab_collector.py          # Placeholder
+├── enforcement/                  # Planned isolated lab component and documentation
+├── scripts/                      # Setup, lab, and traffic scripts are placeholders
+└── docs/                         # API, operations, recovery, evaluation, release docs
 ```
 
----
+For the intended component design and data flow, see
+[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md). The architecture and PRD are
+planning documents, not implementation evidence.
 
-## 🚀 Getting Started
+## Setup and checks
 
 ### Prerequisites
 
-- **Python**: `3.10` or higher
-- **Node.js**: `18.x` or higher
-- **Package Manager**: `npm` / `pnpm` / `yarn` and `pip` / `poetry`
+- Python 3.10 or later
+- Node.js 20 or later and npm
 
-### 1. Environment Setup
+### Backend
 
-Copy `.env.example` to create your local `.env` configuration:
+From the repository root, copy the development template and install the
+backend package and development dependencies:
 
-```bash
-cp .env.example .env
+```powershell
+Copy-Item .env.example .env
+python -m pip install -e "backend[dev]"
+python -m alembic -c backend/alembic.ini upgrade head
 ```
 
-Default environment parameters:
-```ini
-APP_ENV=development
-MITIGATION_MODE=simulation
-MODEL_PATH=models/approved_model.joblib
-DATABASE_URL=sqlite:///./sentrix.db
-API_AUTH_REQUIRED=true
-API_AUTH_TOKEN=dev-only-change-me
+The example token is for local development only. Replace it before exposing
+the service to anyone else; never commit a real secret. Start the API from the
+repository root:
+
+```powershell
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-`API_AUTH_TOKEN` is a local-development placeholder. Replace it with a
-secure secret in any shared or deployed environment, and never commit a
-real token. Send it as a bearer token when calling protected API routes.
+The implemented `GET /api/v1/health` endpoint requires a bearer token by
+default. With the unchanged development template, check it in PowerShell with:
 
-### 2. Backend Setup
-
-From the repository root, install the backend and its dependencies using
-the existing `backend/pyproject.toml`:
-
-```bash
-pip install -e "backend[dev]"
-uvicorn app.main:app --reload --port 8000
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8000/api/v1/health `
+  -Headers @{ Authorization = "Bearer dev-only-change-me" }
 ```
 
-The API documentation will be available at [http://localhost:8000/docs](http://localhost:8000/docs).
+The initial Alembic revision establishes migration tracking only; domain
+tables and the planned API workflows are not implemented. Configuration
+validation rejects non-SQLite URLs and any mitigation mode other than
+`simulation`. The service fails to start when authentication is required but
+no token is configured.
 
-### 3. Frontend Setup
+### Frontend
 
-In a separate terminal, navigate to `frontend/` and start the Next.js dev server:
+Install from the frontend directory, then start the navigation shell:
 
-```bash
-cd frontend
-npm install
+```powershell
+Push-Location frontend
+npm ci
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to view the SENTRIX dashboard.
+The Overview, Alerts, Mitigation, History, and Settings routes currently show
+scaffold notices, not real telemetry or operator controls. Use `npm run lint`,
+`npm run typecheck`, and `npm run build` there to run frontend checks.
 
-### 4. Planned ML Pipeline & Tests
+### Backend tests and lint
 
-These are target commands from the implementation plan. The corresponding
-scripts and test suites must be implemented in Phases 2 and 3 before these
-commands perform the planned work.
+From the repository root:
 
-- **Data Preparation & Training**:
-  ```bash
-  python ml/prepare_data.py
-  python ml/train_rf.py
-  python ml/evaluate.py
-  ```
+```powershell
+python -m ruff check backend/app backend/tests backend/migrations
+python -m pytest backend/tests -q
+```
 
-- **Run Backend Tests**:
-  ```bash
-  cd backend
-  pytest
-  ```
+The current tests cover Phase 1 configuration defaults/validation, authenticated
+health responses, safe error output, and repeatable migrations. Broader
+detection, policy, simulation, lab, ML, and demonstration tests remain planned.
+The ML, traffic-generation, and replay helpers are still placeholders.
 
----
+### CI
 
-## 📖 Documentation
+The workflow at `.github/workflows/ci.yml` runs backend tests/lint and frontend
+lint/type-check/build on pushes and pull requests. The equivalent commands
+have been run locally; a hosted CI run is still required before claiming the
+Phase 1 exit gate is complete.
 
-- [Implementation Plan](IMPLEMENTATION_PLAN.md) - Development phases, order, and exit gates
-- [System Architecture](SYSTEM_ARCHITECTURE.md) - Target system diagrams and API contract
-- [Product Requirements Document (PRD)](PRD.md) - Project scope, functional & non-functional requirements
-- [API Specifications](docs/api_schemas.md) - OpenAPI & payload details
-- [Operations Guide](docs/operations.md) - Deployment and operational procedures
-- [Recovery Procedures](docs/recovery.md) - Emergency cleanup and recovery steps
+## Intended configuration and security
 
----
+The environment template currently contains these intended values:
 
-## 🛡️ Security & Mitigation Notice
+| Variable | Template value | Meaning |
+| --- | --- | --- |
+| `APP_ENV` | `development` | Intended environment label. |
+| `MITIGATION_MODE` | `simulation` | Safe default; lab enforcement is not enabled. |
+| `MODEL_PATH` | `models/approved_model.joblib` | Intended path; it does not establish that an approved runtime model is available. |
+| `DATABASE_URL` | `sqlite:///./sentrix.db` | Intended SQLite database location. |
+| `API_AUTH_REQUIRED` | `true` | The implemented health endpoint requires authentication by default. |
+| `API_AUTH_TOKEN` | `dev-only-change-me` | Development-only placeholder; never use as a real shared/deployed secret. |
 
-By default, SENTRIX requires API authentication (`API_AUTH_REQUIRED=true`)
-and operates in **Simulation Mode**
-(`MITIGATION_MODE=simulation`). In this mode, detection decisions and
-mitigation policies are logged and tracked without making any host network
-modifications. Linux enforcement (`nftables`/`tc`) is confined to isolated
-lab environments.
+The backend validates these settings at startup. The health endpoint enforces
+the bearer token when authentication is required; authorization for future
+administrative operations is not implemented. The simulation mode is
+validated, but no mitigation adapter is wired. When those features are
+implemented:
+
+- Protected API operations must be authenticated and authorized by the
+  backend; dashboard controls are not an authorization boundary.
+- Threshold updates, cancellation, emergency disable, audit access, and lab
+  approval require defined permissions.
+- Keep real credentials out of source control, logs, and error responses.
+- Simulation must not invoke privileged networking operations or alter host
+  networking.
+- Future lab enforcement must use least privilege, bounded actions, expiry,
+  SENTRIX-owned cleanup, restart reconciliation, and tested recovery.
+- Audit records must distinguish requested actions from confirmed outcomes.
+
+## API contract status
+
+Only `GET /api/v1/health` is currently wired. All other listed routes are
+planned contracts from the PRD and architecture, not available endpoints.
+
+| Method | Endpoint | Purpose | Status |
+| --- | --- | --- |
+| `GET` | `/api/v1/health` | Minimal authenticated service status | Implemented |
+| `GET` | `/api/v1/models` | Model versions and active approved model | Planned |
+| `GET` | `/api/v1/models/metrics` | Evaluation metrics | Planned |
+| `POST` | `/api/v1/traffic/flows` | Submit validated flow observations | Planned |
+| `GET` | `/api/v1/traffic/summary` | Traffic and window summaries | Planned |
+| `POST` | `/api/v1/detection/analyze` | Analyze supplied flow/window features | Planned |
+| `GET` | `/api/v1/alerts` | Filtered, paginated alerts | Planned |
+| `GET` | `/api/v1/mitigations` | Mitigation history and status | Planned |
+| `POST` | `/api/v1/mitigations/simulate` | Evaluate and record a simulated action | Planned |
+| `POST` | `/api/v1/mitigations/{id}/cancel` | Cancel an authorized eligible action | Planned |
+| `POST` | `/api/v1/mitigations/disable` | Authorized emergency-disable control | Planned |
+| `GET` | `/api/v1/audit` | Authorized audit retrieval; optional JSON/CSV export | Planned |
+| `GET` | `/api/v1/config/thresholds` | Read threshold configuration | Planned |
+| `PATCH` | `/api/v1/config/thresholds` | Authorized threshold update | Planned |
+
+For canonical purposes, safety semantics, and error requirements, see
+[PRD.md](PRD.md). API response schemas are planned in
+[docs/api_schemas.md](docs/api_schemas.md); that document is currently a
+placeholder.
+
+## Development workflow
+
+The development sequence follows the phases in
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md):
+
+1. Establish project requirements, repository structure, and skeleton.
+2. Prepare public datasets, engineer versioned features, evaluate both model
+   candidates, and document selection.
+3. Implement persistence, ingestion, inference, hybrid policy, safety gate,
+   simulation, and API contracts.
+4. Connect the dashboard to backend data and make demonstration-data status
+   visible.
+5. Implement generator and prepared-file replay through the shared runtime
+   path; test simulation, authorization, lifecycle, audit, and no-network
+   modification.
+6. Only after prior gates, verify restricted lab enforcement, expiry,
+   SENTRIX-owned cleanup, restart reconciliation, and recovery in isolation.
+7. Complete release hardening and operating, troubleshooting, and recovery
+   documentation.
+
+These are planned steps, not a record of completed work. Add runnable
+commands and test instructions as each component is implemented and
+validated.
+
+## Documentation
+
+- [Product Requirements Document](PRD.md) — scope, requirements, API
+  contracts, tests, and acceptance gates.
+- [System Architecture](SYSTEM_ARCHITECTURE.md) — intended architecture,
+  trust boundaries, and workflows.
+- [Implementation Plan](IMPLEMENTATION_PLAN.md) — development phases and
+  exit criteria.
+- [Dataset guidance](data/README.md) — intended dataset organization.
+- [API schemas](docs/api_schemas.md) — planned API details; placeholder.
+- [Model evaluation report](docs/model_evaluation_report.md) — planned
+  evaluation evidence; placeholder.
+- [Operations guide](docs/operations.md) — planned operating instructions;
+  placeholder.
+- [Recovery procedures](docs/recovery.md) — planned recovery guidance;
+  placeholder.
+- [Release checklist](docs/release_checklist.md) — planned release evidence;
+  placeholder.
+- [Lab enforcement overview](enforcement/README.md) and
+  [lab recovery notes](enforcement/recovery.md) — planned lab-only
+  documentation.
+
+## Limitations
+
+SENTRIX is intended as a research and defensive prototype. Public datasets
+may not represent a deployment network, and model scores do not prove
+malicious intent. Detection quality, latency, and resource use must be
+measured and documented. No production-scale protection or guaranteed
+detection capability is claimed.

@@ -1,0 +1,55 @@
+import pytest
+from pydantic import ValidationError
+
+from app.core.config import Settings, validate_runtime_settings
+
+
+def test_defaults_use_simulation_sqlite_and_authentication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "APP_ENV",
+        "MITIGATION_MODE",
+        "MODEL_PATH",
+        "DATABASE_URL",
+        "API_AUTH_REQUIRED",
+        "API_AUTH_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.mitigation_mode == "simulation"
+    assert settings.database_url == "sqlite:///./sentrix.db"
+    assert settings.api_auth_required is True
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("mitigation_mode", "lab"),
+        ("database_url", "postgresql://localhost/sentrix"),
+    ],
+)
+def test_rejects_unsupported_or_unsafe_configuration(
+    field: str,
+    value: str,
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, **{field: value})
+
+
+def test_authentication_default_requires_a_token_at_runtime() -> None:
+    settings = Settings(_env_file=None)
+
+    with pytest.raises(ValueError, match="API_AUTH_TOKEN"):
+        validate_runtime_settings(settings)
+
+
+def test_authentication_can_be_disabled_explicitly_for_local_testing() -> None:
+    settings = Settings(
+        _env_file=None,
+        api_auth_required=False,
+    )
+
+    validate_runtime_settings(settings)
