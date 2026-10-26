@@ -16,16 +16,14 @@ production-ready and does not guarantee DDoS protection on arbitrary live networ
 
 ## Current status
 
-Phases 1, 2, 3, 4, 5, and 6 are **verified complete**:
+All 7 project phases are **verified complete**:
 - **Phase 1 (Foundation):** Validated configuration, token-protected health endpoint, SQLite connection, Alembic migration framework, and runnable frontend navigation shell. Hosted CI is green (`40202861846` for commit `f15f000`).
 - **Phase 2 (Data & ML Baseline):** The CIC-DDoS2019 dataset was validated, cleaned, and deterministically partitioned. Both Random Forest and Isolation Forest candidates were trained and evaluated on held-out test splits. Random Forest achieved 99.995% precision, 99.982% recall, 99.989% F1, 0.58% FPR, and 6.56 ms p95 latency, passing all criteria, and was exported as the runtime approved model (`models/approved_model.joblib`) under schema `1.0.0`. Isolation Forest produced a 53.31% FPR and was rejected. Detailed evidence is documented in [docs/model_evaluation_report.md](docs/model_evaluation_report.md).
 - **Phase 3 (Backend, Detection, and Policy):** Fully implemented SQLAlchemy domain persistence (observations, detections, alerts, mitigations, thresholds, and audit), Pydantic ingestion with UTC timestamps and range validation, runtime model inference, sliding-window traffic aggregation, dual-signal hybrid policy engine, fail-closed safety gate (enforcing allowlists, duration/rate limits, concurrency caps, and emergency disable), simulation mitigation adapter, state machine lifecycle management, and all 14 PRD Section 7 REST API endpoints. The test suite comprises 33 passing automated tests with 0 lint errors.
 - **Phase 4 (Dashboard):** Implemented all 5 core monitoring and control views (Overview with live Recharts telemetry, Alerts feed with flow inspection modal, Mitigation control room with simulation countdowns and Emergency Disable kill switch, History audit trail with CSV export, and Settings with threshold sliders, active model metadata, and an interactive policy matrix preview). Styled with an obsidian-dark cybersecurity theme (`#050B14`) and electric cyan/sky accents (`#00E5FF`). Verified with 0 ESLint and 0 TypeScript errors.
 - **Phase 5 (Simulation & Integration):** Bounded demonstration generator (`scripts/send_test_traffic.py`) and dataset replay (`scripts/replay_dataset.py`) routed through runtime pipeline with `demo-generator:` and `demo-replay:` provenance. Full integration suite verifies TC-01 to TC-07, TC-11 to TC-16, TC-08 simulation safety proof (0 host firewall or network socket changes), and reliability/performance benchmarks (mean inference latency 8.17 ms, peak memory 0.67 MB). All 56 tests pass.
-- **Phase 6 (Isolated Linux Lab):** Implemented restricted `nftables` enforcement agent (`enforcement/agent.py`), rule generator (`enforcement/rules.py`), TTL expiration tracker (`enforcement/expiry.py`), backend adapter (`backend/app/mitigation/linux_lab.py`), service restart reconciler (`backend/app/mitigation/reconcile.py`), signed approval manifest (`enforcement/approval.json`), threat model (`enforcement/README.md`), and recovery runbook (`enforcement/recovery.md`). Rigorously validated with automated tests for TC-09 (rule expiration & verified removal), TC-10 (cleanup failure, fail-closed emergency lockdown & procedural recovery), TC-12 (service restart reconciliation, orphaned rule pruning & missing rule fail-closed handling), and strict subnet isolation (`sentrix0`, `10.200.0.0/24`).
-
-Upcoming phases:
-- **Phase 7 (Release Hardening):** Full regression, security review, and release verification.
+- **Phase 6 (Isolated Linux Lab):** Implemented restricted `nftables` enforcement agent (`enforcement/agent.py`), rule generator (`enforcement/rules.py`), TTL expiration tracker (`enforcement/expiry.py`), backend adapter (`backend/app/mitigation/linux_lab.py`), service restart reconciler (`backend/app/mitigation/reconcile.py`), signed approval manifest (`enforcement/approval.json`), threat model (`enforcement/README.md`), recovery runbook (`enforcement/recovery.md`), and probe collector (`collector/lab_collector.py`). Rigorously validated with automated tests for TC-09 (rule expiration & verified removal), TC-10 (cleanup failure, fail-closed emergency lockdown & procedural recovery), TC-12 (service restart reconciliation, orphaned rule pruning & missing rule fail-closed handling), and strict subnet isolation (`sentrix0`, `10.200.0.0/24`).
+- **Phase 7 (Release Hardening):** Full security hardening review, error envelope sanitization, credential protection, allowlist defense against bypass, audit immutability, parameter boundary attack rejection, and zero OS network mutation verification in `backend/tests/test_cases/test_phase7_security_and_hardening.py` (**76 total passing backend tests**). Documentation synchronized across all operational and recovery guides. Formal release decision published in [docs/release_decision.md](docs/release_decision.md) authorizing `v0.1.0-rc1`.
 
 ## Intended workflow
 
@@ -209,12 +207,13 @@ python -m ruff check
 python -m pytest backend/tests -v
 ```
 
-The test suite contains 56 automated tests covering configuration validation,
+The test suite contains 76 automated tests covering configuration validation,
 repeatable migrations, storage repositories, feature sanitization and sliding windows,
 model loading and inference, dual-signal policy matrix, safety gate allowlists/bounds,
 mitigation lifecycle state machine, all 14 API endpoint contracts, integration test
-cases (TC-01 to TC-07, TC-11 to TC-16), simulation safety proof (TC-08), and
-reliability/performance benchmarks.
+cases (TC-01 to TC-07, TC-11 to TC-16), simulation safety proof (TC-08),
+reliability/performance benchmarks, isolated Linux lab verification (TC-09, TC-10, TC-12),
+and security hardening suites.
 
 ### CI
 
@@ -308,15 +307,11 @@ validated.
 - [Dataset guidance](data/README.md) — dataset provenance, license, schema, and label semantics.
 - [API schemas](docs/api_schemas.md) — complete specification for all 14 REST endpoints, request/response models, and error responses.
 - [Model evaluation report](docs/model_evaluation_report.md) — candidate comparison, selection rationale, and performance evaluation.
-- [Operations guide](docs/operations.md) — planned operating instructions;
-  placeholder.
-- [Recovery procedures](docs/recovery.md) — planned recovery guidance;
-  placeholder.
-- [Release checklist](docs/release_checklist.md) — planned release evidence;
-  placeholder.
-- [Lab enforcement overview](enforcement/README.md) and
-  [lab recovery notes](enforcement/recovery.md) — planned lab-only
-  documentation.
+- [Operations guide](docs/operations.md) — day-to-day operating procedures, collector usage, and mitigation management.
+- [Recovery procedures](docs/recovery.md) — emergency disable recovery, restart reconciliation, and runbooks.
+- [Release checklist](docs/release_checklist.md) — phase-by-phase quality gates and verification checklist.
+- [Release decision](docs/release_decision.md) — formal release decision, gate evidence, accepted deviations, and sign-offs for v0.1.0-rc1.
+- [Lab enforcement overview](enforcement/README.md) and [lab recovery notes](enforcement/recovery.md) — isolated Linux lab architecture, nftables rules, and troubleshooting runbooks.
 
 ## Limitations
 

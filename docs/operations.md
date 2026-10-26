@@ -143,3 +143,32 @@ All operations, security decisions, and state machine transitions are permanentl
 - **Viewing Audit Logs**: Access `GET /api/v1/audit?limit=50&offset=0`.
 - **Exporting CSV**: Query `GET /api/v1/audit?format=csv` or click the **Export CSV** button in the History dashboard view.
 - **Integrity**: Audit records are append-only and cannot be modified or deleted through the API.
+
+---
+
+## 7. Linux Lab Probe Collector & Enforcement Operations
+
+SENTRIX includes a lightweight real-time telemetry collector script (`collector/lab_collector.py`) and an optional, strictly bounded Linux Lab Enforcement subsystem for isolated validation.
+
+### Collector Operation (`collector/lab_collector.py`)
+The collector polls interface statistics (via Linux `/proc/net/dev` or an adaptive platform probe fallback), computes sliding-window rates (PPS, BPS, flags), and streams standardized telemetry batches directly into the ingestion endpoint (`POST /api/v1/traffic/flows`).
+
+```powershell
+# Run 5 test iterations against localhost backend
+python collector/lab_collector.py --iterations 5
+
+# Continuous collector monitoring targeting lab interface 'sentrix0'
+python collector/lab_collector.py --interface sentrix0 --api-url http://127.0.0.1:8000 --interval 2.0 --target-ip 10.200.0.50
+```
+
+#### Collector Runtime Modes:
+- **Live Interface Mode**: When run on Linux with access to `/proc/net/dev` and the target interface (e.g. `sentrix0`), real packet and byte deltas are sampled per window interval.
+- **Fallback Probe Mode**: When run on Windows or in environments without `/proc/net/dev`, the collector automatically runs in fallback probe mode, streaming Schema 1.0.0 compliant telemetry with synthetic packet variance to validate live ingestion without crashing.
+
+### Isolated Linux Lab Enforcement Mode
+In production simulation mode (`MITIGATION_MODE=simulation`), SENTRIX performs zero OS mutations. In authorized Linux lab environments (`MITIGATION_MODE=linux_lab`):
+- All rate-limiting rules are strictly confined to dedicated table `sentrix_lab` on interface `sentrix0` and subnet `10.200.0.0/24`.
+- Host networking, default gateways, and loopback are hardware/kernel isolated.
+- Requires formal signed authorization in `enforcement/approval.json`.
+- TTL reconciliation (`app.mitigation.reconcile`) runs continuously to detect and safely clean up orphaned or expired nftables rules.
+

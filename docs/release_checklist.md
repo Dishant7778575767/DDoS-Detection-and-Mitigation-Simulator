@@ -77,17 +77,29 @@ This checklist serves as the formal release and readiness gate for SENTRIX. All 
   - TC-10: Cleanup failure, fail-closed emergency lockdown & procedural recovery.
   - TC-12: Service restart reconciliation, orphaned rule pruning & missing rule lockdown.
   - Subnet boundaries (`10.200.0.0/24`) and parameter bounds enforcement.
+- [x] Real-time telemetry probe collector implemented in `collector/lab_collector.py` with adaptive multi-platform fallback mode.
+
+### Phase 7 — Release Hardening Gate
+- [x] Automated security hardening test suite implemented in `backend/tests/test_cases/test_phase7_security_and_hardening.py`.
+- [x] Default configuration invariance verified: `MITIGATION_MODE=simulation`, `API_AUTH_REQUIRED=true`, `SecretStr` masking.
+- [x] Standard error envelope sanitization verified: `{ "error": { "code", "message", "request_id" } }` without internal stack-trace or file path exposure.
+- [x] Sensitive IP allowlists verified against poisoning / bypass attacks (`127.0.0.1`, `::1`, default gateways, public DNS).
+- [x] Extreme parameter boundary attacks fail closed (negative/excessive pps, duration overflow).
+- [x] Audit log immutability and lifecycle DAG state machine transition rules verified.
+- [x] Subprocess isolation verified: zero OS networking commands invoked in simulation mode.
+- [x] Full test suite passing: **76 / 76 automated backend tests passing** with 0 failures and 0 warnings.
+- [x] Formal release decision and gate evidence document published in `docs/release_decision.md`.
 
 ---
 
 ## 3. Security & Safety Checklist
 
-- [ ] **Default Safe Mode**: `MITIGATION_MODE` is strictly set to `simulation`.
-- [ ] **No Public Enforcement**: Linux `nftables`/`tc` enforcement remains disabled outside approved lab.
-- [ ] **Credential Protection**: `.env` is git-ignored; no production secrets or hardcoded passwords exist in repo.
-- [ ] **Error Envelope Sanitization**: API errors return structured envelope `{ "error": { "code", "message", "request_id" } }` without stack trace leakage.
-- [ ] **Immutable Audit Logging**: All sensitive actions and lifecycle transitions create unmodifiable records in `audit_events`.
-- [ ] **Allowlist Integrity**: `127.0.0.1`, `::1`, default gateways, and public DNS resolvers cannot be targeted for rate-limiting.
+- [x] **Default Safe Mode**: `MITIGATION_MODE` is strictly set to `simulation`.
+- [x] **No Public Enforcement**: Linux `nftables`/`tc` enforcement remains disabled outside approved lab.
+- [x] **Credential Protection**: `.env` is git-ignored; no production secrets or hardcoded passwords exist in repo.
+- [x] **Error Envelope Sanitization**: API errors return structured envelope `{ "error": { "code", "message", "request_id" } }` without stack trace leakage.
+- [x] **Immutable Audit Logging**: All sensitive actions and lifecycle transitions create unmodifiable records in `audit_events`.
+- [x] **Allowlist Integrity**: `127.0.0.1`, `::1`, default gateways, and public DNS resolvers cannot be targeted for rate-limiting.
 
 ---
 
@@ -121,6 +133,7 @@ npm --prefix frontend run build
 - [x] `docs/operations.md`: Day-to-day operating procedures, tool usage, and policy rules.
 - [x] `docs/recovery.md`: Emergency disable recovery, restart reconciliation, and runbooks.
 - [x] `docs/release_checklist.md`: Quality gates and readiness checklist.
+- [x] `docs/release_decision.md`: Formal release decision, gate evidence, accepted deviations, and sign-off matrix.
 - [x] `enforcement/README.md`: Isolated lab architecture, namespace, and threat model.
 - [x] `enforcement/recovery.md`: TC-10 cleanup failure and TC-12 restart recovery runbooks.
 

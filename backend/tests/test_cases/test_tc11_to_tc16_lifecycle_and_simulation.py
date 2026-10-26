@@ -25,6 +25,7 @@ from app.api.v1.traffic import (
     FlowObservationRequest,
     ingest_flow_observation,
 )
+from app.core.config import get_settings
 from app.detection.predictor import FlowPrediction
 from app.features.definitions import FEATURE_SCHEMA_VERSION
 from app.main import app
@@ -65,8 +66,11 @@ def load_fixture_scenario(scenario_key: str) -> dict:
     return data["scenarios"][scenario_key]
 
 
-def test_tc11_unauthorized_operator() -> None:
+def test_tc11_unauthorized_operator(monkeypatch: pytest.MonkeyPatch) -> None:
     """TC-11: Unauthorized operator: Missing, invalid, or expired tokens reject sensitive requests (401)."""
+    monkeypatch.setenv("API_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("API_AUTH_TOKEN", "valid-secret-token")
+    get_settings.cache_clear()
     client = TestClient(app)
 
     # 1. Missing Authorization header on sensitive action

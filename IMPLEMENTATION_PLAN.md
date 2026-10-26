@@ -254,15 +254,18 @@ without overstating performance, safety, or protection.
 release blockers resolved or explicitly accepted by the authorized project
 decision-maker.
 
+**Status (2026-10-26): Verified complete.**
+Hardening test suite implemented in `backend/tests/test_cases/test_phase7_security_and_hardening.py` (76 total passing backend tests). Documentation complete and cross-checked across all guides, runbooks, and checklists. Formal release decision published in `docs/release_decision.md` covering all 4 release gates, accepted deviations, limitations, and sign-offs.
+
 | Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
 | --- | --- | --- | --- |
-| 7.1 Regression and security review | Run applicable backend, ML, frontend, integration, security, and isolated-lab tests. Review configuration defaults, authentication/authorization, audit, error leakage, secret handling, and findings. | Evidence corresponds to the release candidate; no unresolved critical security issue remains. |
-| 7.2 Documentation and reproducibility | Complete and cross-check README, PRD, architecture, `docs/api_schemas.md`, `docs/model_evaluation_report.md`, `docs/operations.md`, `docs/recovery.md`, `docs/release_checklist.md`, and lab documentation. | Clean-environment setup and supported operations are followed; links, commands, phase names, API, policy, lifecycle, defaults, and status are consistent. |
-| 7.3 Release decision | Record ML, simulation, Linux lab (if pursued), and release gate evidence; document accepted deviations and known limitations. | Explicit decision records scope and whether lab enforcement remains disabled or is approved only for the isolated lab. |
+| 7.1 Regression and security review | Run applicable backend, ML, frontend, integration, security, and isolated-lab tests. Review configuration defaults, authentication/authorization, audit, error leakage, secret handling, and findings. | **Complete:** Implemented `test_phase7_security_and_hardening.py` testing config defaults, SecretStr masking, error envelope sanitization, allowlist bypass defense, parameter boundary rejection, audit immutability, and zero OS network mutation. All 76 tests passing. | None. |
+| 7.2 Documentation and reproducibility | Complete and cross-check README, PRD, architecture, `docs/api_schemas.md`, `docs/model_evaluation_report.md`, `docs/operations.md`, `docs/recovery.md`, `docs/release_checklist.md`, and lab documentation. | **Complete:** All documentation updated and synchronized. Added collector operations to `docs/operations.md`, recovery procedures verified in `docs/recovery.md` and `enforcement/recovery.md`, checklist completed in `docs/release_checklist.md`. | None. |
+| 7.3 Release decision | Record ML, simulation, Linux lab (if pursued), and release gate evidence; document accepted deviations and known limitations. | **Complete:** Published `docs/release_decision.md` detailing ML Gate, Simulation Gate, Linux Lab Gate, Release Hardening Gate, accepted deviations, and sign-off matrix for v0.1.0-rc1. | None. |
 
-**Phase exit (release gate):** Gate evidence is recorded; documentation is
+**Phase exit (release gate) — verified complete (2026-10-26):** Gate evidence is recorded; documentation is
 complete and reviewed; no unresolved critical security issue remains; known
-limitations and operating/recovery procedures are clear.
+limitations and operating/recovery procedures are clear. Default simulation remains enforced.
 
 ## Requirement and test traceability
 
@@ -341,4 +344,8 @@ recovery tests. No risk is considered eliminated until evidence supports it.
   restart reconciliation (`backend/app/mitigation/reconcile.py`), and runbook
   (`enforcement/recovery.md`) implemented. Automated tests for TC-09 (rule expiration),
   TC-10 (cleanup failure & recovery), and TC-12 (service restart reconciliation) pass.
-- [ ] **Phase 7 — Release hardening:** Not complete.
+- [x] **Phase 7 — Release hardening:** Verified complete. Automated security
+  hardening suite (`test_phase7_security_and_hardening.py`) verified across 76
+  total backend tests. Documentation synchronized across `docs/`, `enforcement/`,
+  and root files. Formal release decision published in `docs/release_decision.md`
+  authorizing `v0.1.0-rc1` under default simulation and isolated lab scope.
