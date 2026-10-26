@@ -79,6 +79,7 @@ def test_keepalive_database_failure_returns_503(
 ) -> None:
     """When the database is unreachable, keepalive returns 503 without leaking stack traces."""
     monkeypatch.setenv("API_AUTH_REQUIRED", "true")
+    monkeypatch.setenv("API_AUTH_TOKEN", "main-test-token")
     monkeypatch.setenv("KEEPALIVE_SECRET", "super-secret-keepalive-key")
     get_settings.cache_clear()
 
