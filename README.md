@@ -1,35 +1,31 @@
-# SENTRIX DDoS Defense Platform
+# SENTRIX DDoS Defense Platform 
 
 > **Detect. Defend. Stay Resilient.**
 
-SENTRIX is a planned defensive DDoS detection and mitigation prototype. Its
-target design analyzes flow-level network features and time-window statistics,
-compares machine-learning evidence with threshold-based rules, and routes
-eligible mitigation requests through a safety gate. A web dashboard is
-planned for monitoring detections, alerts, and action outcomes.
+SENTRIX is a defensive DDoS detection and mitigation prototype. It analyzes
+flow-level network features and time-window statistics, evaluates
+machine-learning inference alongside threshold-based traffic rules in a
+dual-signal hybrid policy, and routes eligible mitigation requests through a
+fail-closed safety gate.
 
-SENTRIX is not production-ready and does not guarantee DDoS protection.
-Architecture diagrams and planned API contracts describe intended behavior;
-they do not demonstrate that a component is implemented or operational.
+SENTRIX is an active defensive prototype and control plane. It is tested
+against public labeled datasets (CIC-DDoS2019) and controlled flow records.
+By default, SENTRIX operates in `simulation` mode, recording and evaluating
+mitigations without modifying host networking or firewall tables. It is not
+production-ready and does not guarantee DDoS protection on arbitrary live networks.
 
 ## Current status
 
-The repository is an early implementation scaffold. Phase 1 now provides
-validated backend settings, a token-protected health endpoint, a SQLite
-connection/migration baseline, and a runnable frontend navigation shell. The
-frontend pages are placeholders and do not consume backend data. The remaining
-API, detection, policy, persistence domain models, mitigation, ML, generator,
-and replay workflows are not implemented. Phase 1 checks have been run locally;
-the configured hosted CI workflow has not yet reported a result.
+Phases 1, 2, and 3 are **verified complete**:
+- **Phase 1 (Foundation):** Validated configuration, token-protected health endpoint, SQLite connection, Alembic migration framework, and runnable frontend navigation shell. Hosted CI is green (`40202861846` for commit `f15f000`).
+- **Phase 2 (Data & ML Baseline):** The CIC-DDoS2019 dataset was validated, cleaned, and deterministically partitioned. Both Random Forest and Isolation Forest candidates were trained and evaluated on held-out test splits. Random Forest achieved 99.98% precision, 99.96% recall, 99.97% F1, 1.73% FPR, and 4.45 ms p95 latency, passing all criteria, and was exported as the runtime approved model (`models/approved_model.joblib`) under schema `1.0.0`. Isolation Forest produced a 54.76% FPR and was rejected. Detailed evidence is documented in [docs/model_evaluation_report.md](docs/model_evaluation_report.md).
+- **Phase 3 (Backend, Detection, and Policy):** Fully implemented SQLAlchemy domain persistence (observations, detections, alerts, mitigations, thresholds, and audit), Pydantic ingestion with UTC timestamps and range validation, runtime model inference, sliding-window traffic aggregation, dual-signal hybrid policy engine, fail-closed safety gate (enforcing allowlists, duration/rate limits, concurrency caps, and emergency disable), simulation mitigation adapter, state machine lifecycle management, and all 14 PRD Section 7 REST API endpoints. The test suite comprises 33 passing automated tests with 0 lint errors.
 
-Some model artifact files exist, but the repository does not establish that a
-candidate has been evaluated and approved for runtime use. A file or module
-path alone does not prove that its planned behavior is complete.
-
-The implementation roadmap and exit criteria are in
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md). Do not treat the presence of
-a file, model binary, endpoint module, or documentation as evidence that its
-planned behavior has passed testing.
+Upcoming phases:
+- **Phase 4 (Dashboard):** Wiring the Next.js React frontend to consume backend API endpoints for live telemetry, alerts, and controls.
+- **Phase 5 (Simulation & Integration):** End-to-end traffic replay and verification of host network non-interference.
+- **Phase 6 (Isolated Linux Lab):** Gated Linux `nftables`/`tc` enforcement in an isolated lab environment.
+- **Phase 7 (Release Hardening):** Full regression, security review, and release verification.
 
 ## Intended workflow
 
@@ -116,34 +112,34 @@ SENTRIX/
 ├── backend/
 │   ├── pyproject.toml             # Python package and dependency manifest
 │   ├── alembic.ini                # SQLite migration configuration
-│   ├── migrations/                # Migration environment and initial revision
+│   ├── migrations/                # Alembic environment and initial DDL revision
 │   ├── app/
-│   │   ├── main.py                # FastAPI app with request IDs and health route
-│   │   ├── api/v1/                # Planned API modules/scaffolds
-│   │   ├── core/                  # Settings, health auth, logging, error handling
-│   │   ├── detection/             # Planned inference and model loading
-│   │   ├── features/              # Planned versioned feature pipeline
-│   │   ├── ingestion/             # Planned Pydantic schemas and validation
-│   │   ├── mitigation/            # Planned simulation and lab adapters/lifecycle
-│   │   ├── policy/                # Planned hybrid policy and safeguards
-│   │   ├── safety/                # Planned safety gate
-│   │   ├── services/              # Planned end-to-end pipeline
-│   │   └── storage/               # SQLite engine/session base; repositories and audit planned
-│   └── tests/                     # Phase 1 settings, health, and migration tests
+│   │   ├── main.py                # FastAPI application wiring all 14 API endpoints
+│   │   ├── api/v1/                # Implemented API routers (health, models, traffic, detection, alerts, mitigations, config, audit)
+│   │   ├── core/                  # Settings, auth dependencies, logging, error handlers
+│   │   ├── detection/             # Model loader, predictor, and threat scoring
+│   │   ├── features/              # Schema 1.0.0 definitions, sanitization, sliding windows
+│   │   ├── ingestion/             # Pydantic validation schemas
+│   │   ├── mitigation/            # Simulation adapter, lifecycle state machine, reconciliation
+│   │   ├── policy/                # Dual-signal hybrid policy, allowlist, cooldown manager
+│   │   ├── safety/                # Fail-closed safety gate (bounds, rate limits, emergency disable)
+│   │   ├── services/              # Pipeline ingestion-to-simulation orchestration
+│   │   └── storage/               # SQLite engine, domain models, typed repositories, audit
+│   └── tests/                     # 33 automated tests (core, storage, unit, API contracts)
 ├── frontend/
 │   ├── package.json              # Next.js app scripts and dependencies
-│   └── src/app/                  # Accessible navigation and five placeholder routes
-├── .github/workflows/            # Backend and frontend CI checks
-├── ml/                           # Training/evaluation script placeholders and config
-├── models/                       # Artifact files present; approval/evaluation not established
-├── notebooks/                    # Dataset/model exploration notebooks
+│   └── src/app/                  # Accessible navigation and five dashboard route views
+├── .github/workflows/            # Backend and frontend CI workflows
+├── ml/                           # Data preparation, training, evaluation, and export scripts
+├── models/                       # Versioned models and approved runtime artifact
+├── notebooks/                    # Dataset and model exploration notebooks
 ├── data/
-│   └── README.md                 # Dataset guidance; datasets are not included
+│   └── README.md                 # Dataset provenance, licensing, and schema 1.0.0 definition
 ├── collector/
-│   └── lab_collector.py          # Placeholder
-├── enforcement/                  # Planned isolated lab component and documentation
-├── scripts/                      # Setup, lab, and traffic scripts are placeholders
-└── docs/                         # API, operations, recovery, evaluation, release docs
+│   └── lab_collector.py          # Placeholder for lab collector
+├── enforcement/                  # Planned isolated Linux lab enforcement and documentation
+├── scripts/                      # Setup and demo traffic helper scripts
+└── docs/                         # API specification, ML evaluation report, operations guides
 ```
 
 For the intended component design and data flow, see
@@ -176,19 +172,19 @@ repository root:
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-The implemented `GET /api/v1/health` endpoint requires a bearer token by
-default. With the unchanged development template, check it in PowerShell with:
+The backend provides 14 REST API endpoints under `/api/v1/`, all protected by
+bearer token authentication by default. With the development template, test
+service health with PowerShell:
 
 ```powershell
 Invoke-RestMethod -Uri http://127.0.0.1:8000/api/v1/health `
   -Headers @{ Authorization = "Bearer dev-only-change-me" }
 ```
 
-The initial Alembic revision establishes migration tracking only; domain
-tables and the planned API workflows are not implemented. Configuration
-validation rejects non-SQLite URLs and any mitigation mode other than
-`simulation`. The service fails to start when authentication is required but
-no token is configured.
+Alembic migrations automatically initialize all SQLite domain tables (`observations`,
+`detections`, `alerts`, `mitigations`, `threshold_configs`, `audit_events`).
+Configuration validation enforces SQLite database URLs and `simulation` mitigation
+mode, preventing accidental host modification.
 
 ### Frontend
 
@@ -210,13 +206,13 @@ From the repository root:
 
 ```powershell
 python -m ruff check backend/app backend/tests backend/migrations
-python -m pytest backend/tests -q
+python -m pytest backend/tests/core backend/tests/storage backend/tests/unit backend/tests/api/test_api_contracts.py -v
 ```
 
-The current tests cover Phase 1 configuration defaults/validation, authenticated
-health responses, safe error output, and repeatable migrations. Broader
-detection, policy, simulation, lab, ML, and demonstration tests remain planned.
-The ML, traffic-generation, and replay helpers are still placeholders.
+The test suite contains 33 automated tests covering configuration validation,
+repeatable migrations, storage repositories, feature sanitization and sliding windows,
+model loading and inference, dual-signal policy matrix, safety gate allowlists/bounds,
+mitigation lifecycle state machine, and all 14 API endpoint contracts.
 
 ### CI
 
@@ -257,30 +253,28 @@ implemented:
 
 ## API contract status
 
-Only `GET /api/v1/health` is currently wired. All other listed routes are
-planned contracts from the PRD and architecture, not available endpoints.
+All 14 endpoints defined in the PRD are implemented in `backend/app/api/v1/` and
+verified against contract test fixtures.
 
 | Method | Endpoint | Purpose | Status |
-| --- | --- | --- |
+| --- | --- | --- | --- |
 | `GET` | `/api/v1/health` | Minimal authenticated service status | Implemented |
-| `GET` | `/api/v1/models` | Model versions and active approved model | Planned |
-| `GET` | `/api/v1/models/metrics` | Evaluation metrics | Planned |
-| `POST` | `/api/v1/traffic/flows` | Submit validated flow observations | Planned |
-| `GET` | `/api/v1/traffic/summary` | Traffic and window summaries | Planned |
-| `POST` | `/api/v1/detection/analyze` | Analyze supplied flow/window features | Planned |
-| `GET` | `/api/v1/alerts` | Filtered, paginated alerts | Planned |
-| `GET` | `/api/v1/mitigations` | Mitigation history and status | Planned |
-| `POST` | `/api/v1/mitigations/simulate` | Evaluate and record a simulated action | Planned |
-| `POST` | `/api/v1/mitigations/{id}/cancel` | Cancel an authorized eligible action | Planned |
-| `POST` | `/api/v1/mitigations/disable` | Authorized emergency-disable control | Planned |
-| `GET` | `/api/v1/audit` | Authorized audit retrieval; optional JSON/CSV export | Planned |
-| `GET` | `/api/v1/config/thresholds` | Read threshold configuration | Planned |
-| `PATCH` | `/api/v1/config/thresholds` | Authorized threshold update | Planned |
+| `GET` | `/api/v1/models` | Model versions and active approved model | Implemented |
+| `GET` | `/api/v1/models/metrics` | Evaluation metrics | Implemented |
+| `POST` | `/api/v1/traffic/flows` | Submit validated flow observations | Implemented |
+| `GET` | `/api/v1/traffic/summary` | Traffic and window summaries | Implemented |
+| `POST` | `/api/v1/detection/analyze` | Analyze supplied flow/window features | Implemented |
+| `GET` | `/api/v1/alerts` | Filtered, paginated alerts | Implemented |
+| `GET` | `/api/v1/mitigations` | Mitigation history and status | Implemented |
+| `POST` | `/api/v1/mitigations/simulate` | Evaluate and record a simulated action | Implemented |
+| `POST` | `/api/v1/mitigations/{id}/cancel` | Cancel an authorized eligible action | Implemented |
+| `POST` | `/api/v1/mitigations/disable` | Authorized emergency-disable control | Implemented |
+| `GET` | `/api/v1/audit` | Authorized audit retrieval; optional JSON/CSV export | Implemented |
+| `GET` | `/api/v1/config/thresholds` | Read threshold configuration | Implemented |
+| `PATCH` | `/api/v1/config/thresholds` | Authorized threshold update | Implemented |
 
-For canonical purposes, safety semantics, and error requirements, see
-[PRD.md](PRD.md). API response schemas are planned in
-[docs/api_schemas.md](docs/api_schemas.md); that document is currently a
-placeholder.
+For canonical schemas, query parameters, request-body models, and error
+responses, see [docs/api_schemas.md](docs/api_schemas.md).
 
 ## Development workflow
 
@@ -314,10 +308,9 @@ validated.
   trust boundaries, and workflows.
 - [Implementation Plan](IMPLEMENTATION_PLAN.md) — development phases and
   exit criteria.
-- [Dataset guidance](data/README.md) — intended dataset organization.
-- [API schemas](docs/api_schemas.md) — planned API details; placeholder.
-- [Model evaluation report](docs/model_evaluation_report.md) — planned
-  evaluation evidence; placeholder.
+- [Dataset guidance](data/README.md) — dataset provenance, license, schema, and label semantics.
+- [API schemas](docs/api_schemas.md) — complete specification for all 14 REST endpoints, request/response models, and error responses.
+- [Model evaluation report](docs/model_evaluation_report.md) — candidate comparison, selection rationale, and performance evaluation.
 - [Operations guide](docs/operations.md) — planned operating instructions;
   placeholder.
 - [Recovery procedures](docs/recovery.md) — planned recovery guidance;

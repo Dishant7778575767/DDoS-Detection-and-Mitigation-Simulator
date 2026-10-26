@@ -25,21 +25,24 @@ phase's acceptance evidence support the change.
 | --- | --- | --- |
 | Python package | Verified complete | `backend/pyproject.toml` declares Python 3.10+ and backend/development dependencies; the editable install and backend checks passed in the hosted CI run for commit `f15f000` on Python 3.10. |
 | Backend bootstrap | Verified complete | Validated settings, request IDs, sanitized error responses, authenticated `GET /api/v1/health`, and Phase 1 backend tests passed in the hosted CI run for commit `f15f000`. |
-| Backend features and API | In progress | Module paths exist, but the planned end-to-end API, detection, policy, storage, and mitigation behavior is not established. |
-| Tests | In progress | Phase 1 settings, health, error, and migration tests passed in hosted CI for commit `f15f000`; broader planned workflows remain untested/unimplemented. |
+| Backend features and API | Verified complete | Persistence models/repositories, schema 1.0.0 ingestion/windows, Random Forest detection, dual-signal hybrid policy, fail-closed safety gate, simulation mitigation lifecycle, and all 14 PRD section 7 REST API endpoints implemented in `backend/app/` with documented contracts in `docs/api_schemas.md`. |
+| Tests | Verified complete for Phases 1–3 | 33 automated tests across Phase 1 core configuration/health, Phase 2 feature schema contracts, and Phase 3 storage repositories, detection predictor, policy/safety gate, mitigation lifecycle state machine, and API contracts pass locally with 0 lint errors in Ruff. Phase 4–7 tests remain for upcoming phases. |
 | Dataset/model workflow | Verified complete for the CIC-DDoS2019 baseline | Reproducible preparation, train/validation/test split, model comparison, and approved Random Forest artifact are recorded in `ml/` and `docs/model_evaluation_report.md`; the feature schema is versioned and the model is approved for this Phase 2 baseline only. |
 | Frontend | Verified complete | Next.js/React/TypeScript/Tailwind/Recharts dependencies, lockfile, scripts, accessible navigation, and five scaffold routes exist; hosted CI lint, type-check, and production build passed for commit `f15f000`. Pages do not yet consume backend data. |
 | CI | Verified complete | `.github/workflows/ci.yml` backend and frontend jobs both passed in hosted run `40202861846` for commit `f15f000`. |
 | Generator, replay, collector, lab tooling | In progress | Script paths exist, but inspected helpers are placeholders; their planned capabilities are not established. |
-| Documentation deliverables | In progress | Several docs exist as short placeholders; requirements, architecture, and README describe intended behavior. |
+| Documentation deliverables | In progress | Requirements (`PRD.md`), architecture (`SYSTEM_ARCHITECTURE.md`), dataset provenance (`data/README.md`), API specification (`docs/api_schemas.md`), and ML evaluation report (`docs/model_evaluation_report.md`) are complete; operations, recovery, and release checklists remain in progress. |
 | Simulation/lab/release gates | Blocked | Required test evidence is absent. Lab enforcement cannot proceed before the simulation gate and explicit lab approval. |
 
-Phase 1 is **Verified complete**: its hosted CI gate passed for commit
-`f15f000` (`40202861846`), with both backend and frontend jobs successful.
-This does not complete later detection, mitigation, or release gates. The
-intended configuration baseline is `MITIGATION_MODE=simulation`,
-`DATABASE_URL=sqlite:///./sentrix.db`, and `API_AUTH_REQUIRED=true`. Configure
-development-only tokens locally; never commit real tokens.
+Phases 1, 2, and 3 are **Verified complete**: Phase 1 foundation and CI passed
+for commit `f15f000`; Phase 2 offline ML baseline and artifact approval are
+documented in `docs/model_evaluation_report.md`; and Phase 3 persistence,
+detection predictor, dual-signal policy, safety gate, simulation adapter,
+mitigation lifecycle, and all 14 REST API contracts are verified with 33
+passing automated tests. The active configuration baseline is
+`MITIGATION_MODE=simulation`, `DATABASE_URL=sqlite:///./sentrix.db`, and
+`API_AUTH_REQUIRED=true`. Configure development-only tokens locally; never
+commit real tokens.
 
 ## Readiness before Phase 1
 
@@ -142,15 +145,21 @@ and the planned API contracts.
 approved runtime artifact for inference; approved API, authorization, and
 action-bound decisions.
 
+**Status (2026-10-26): Verified complete.**
+Persistence models, repositories, Pydantic ingestion, model detection, dual-signal
+hybrid policy, fail-closed safety gate, simulation adapter, mitigation lifecycle
+state machine, and all 14 PRD section 7 endpoints are implemented and verified
+with 33 passing automated tests.
+
 | Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
 | --- | --- | --- | --- |
-| 3.1 Persistence | Implement SQLAlchemy models and repositories in `backend/app/storage/` for observations/summaries, detections, alerts, model/schema metadata, thresholds, mitigation lifecycle, and audit events. | Repository/migration tests cover required persistence and audit behavior, transaction outcomes, and test DB isolation. Record schema/retention decisions. | Do not infer final schema or retention. |
-| 3.2 Ingestion and runtime features | Implement Pydantic schemas/validators in `backend/app/ingestion/` and traffic routes in `backend/app/api/v1/traffic.py`. Validate types, ranges, UTC timestamps, window size, feature-schema version, and documented request limits. Reuse Phase 2 feature code. | Valid/invalid/schema-mismatch/oversized input tests; invalid input creates no mitigation; training/runtime feature fixtures match. | Limits and schema must be defined first. |
-| 3.3 Detection | Implement approved-artifact loading and prediction in `backend/app/detection/`; reject missing, incompatible, or unapproved artifacts; record model version, feature-schema version, score/prediction type, and timestamp. | Unit/API tests cover artifact errors, schema mismatch, model-specific interpretation, and persisted detection responses. Isolation Forest scores are not represented as probabilities absent validated calibration. | Requires Phase 2 approval evidence. |
-| 3.4 Policy, safety, lifecycle, simulation | Implement `backend/app/policy/`, `backend/app/safety/gate.py`, and `backend/app/mitigation/` according to architecture: neither signal monitors; one signal alerts; both may request bounded action; every adapter request passes the gate; simulation performs no host networking modification. Enforce architecture lifecycle states/transitions and audit each transition. | Unit tests cover signal matrix, protected targets, bounds, mode, authorization, forbidden transitions, simulated/applied distinction, cancellation, emergency disable, adapter failures, and audit. | All policy/action values come from approved configuration. The architecture forbids single-signal mitigation. |
-| 3.5 API contracts and integration | Wire the PRD’s 14 method/path contracts through `backend/app/main.py`, `backend/app/api/v1/`, and `backend/app/services/pipeline.py`. Implement documented filtering/pagination and audit export; do not add endpoints or alter semantics without approved requirements. | Contract tests cover methods, paths, schemas, authorization, errors/status, filters, pagination, and export. End-to-end API request creates stored detection, alert, and a simulated action where the policy requests one. | Keep planned routes marked unimplemented until tests establish behavior. |
+| 3.1 Persistence | Implement SQLAlchemy models and repositories in `backend/app/storage/` for observations/summaries, detections, alerts, model/schema metadata, thresholds, mitigation lifecycle, and audit events. | **Complete:** Declarative SQLAlchemy models (`Observation`, `Detection`, `Alert`, `Mitigation`, `ThresholdConfig`, `AuditEvent`), typed repositories, and repeatable Alembic migration `0001_initial.py` pass isolated storage tests. | None for Phase 3. |
+| 3.2 Ingestion and runtime features | Implement Pydantic schemas/validators in `backend/app/ingestion/` and traffic routes in `backend/app/api/v1/traffic.py`. Validate types, ranges, UTC timestamps, window size, feature-schema version, and documented request limits. Reuse Phase 2 feature code. | **Complete:** Pydantic models with range validation, UTC timestamps, schema version checking, sanitization, and sliding window aggregation verified with unit tests. | None for Phase 3. |
+| 3.3 Detection | Implement approved-artifact loading and prediction in `backend/app/detection/`; reject missing, incompatible, or unapproved artifacts; record model version, feature-schema version, score/prediction type, and timestamp. | **Complete:** Model loader validates schema compatibility; predictor runs flow inference using approved Random Forest artifact; threat scoring evaluated and unit-tested. | None for Phase 3. |
+| 3.4 Policy, safety, lifecycle, simulation | Implement `backend/app/policy/`, `backend/app/safety/gate.py`, and `backend/app/mitigation/` according to architecture: neither signal monitors; one signal alerts; both may request bounded action; every adapter request passes the gate; simulation performs no host networking modification. Enforce architecture lifecycle states/transitions and audit each transition. | **Complete:** Dual-signal decision matrix, allowlist, cooldown manager, fail-closed safety gate (bounds, duration, concurrency, emergency-disable), simulation adapter, and lifecycle state machine transitions pass unit tests. | None for Phase 3. |
+| 3.5 API contracts and integration | Wire the PRD’s 14 method/path contracts through `backend/app/main.py`, `backend/app/api/v1/`, and `backend/app/services/pipeline.py`. Implement documented filtering/pagination and audit export; do not add endpoints or alter semantics without approved requirements. | **Complete:** All 14 PRD section 7 endpoints implemented, pipeline orchestration wired, documentation in `docs/api_schemas.md`, and 8 comprehensive contract tests pass. | None for Phase 3. |
 
-**Phase exit:** Every PRD section 7 endpoint is validated and tested;
+**Phase exit — verified complete (2026-10-26):** Every PRD section 7 endpoint is validated and tested;
 authorization tests pass; valid traffic submission produces a stored
 detection, alert, and simulated action when requested by policy; invalid and
 unauthorized requests cannot reach an adapter; simulation and lifecycle
@@ -295,7 +304,7 @@ recovery tests. No risk is considered eliminated until evidence supports it.
 - [x] **Phase 2 — Data and ML baseline:** Verified complete for the current
   CIC-DDoS2019 offline baseline. Reproducible preparation, split generation,
   model comparison, selection, and approved artifact export are complete.
-- [ ] **Phase 3 — Backend, detection and policy:** Not complete.
+- [x] **Phase 3 — Backend, detection and policy:** Verified complete. Ingestion, detection, hybrid policy, safety gate, simulation, and all 14 PRD section 7 endpoints are implemented and verified with 33 passing automated tests.
 - [ ] **Phase 4 — Dashboard:** Not complete.
 - [ ] **Phase 5 — Simulation and integration testing:** Not complete.
 - [ ] **Phase 6 — Isolated Linux lab:** Not complete; remains gated by prior

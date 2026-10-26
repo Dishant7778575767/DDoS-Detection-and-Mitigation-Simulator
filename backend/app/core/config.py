@@ -52,6 +52,4 @@ def validate_runtime_settings(settings: Settings) -> None:
         settings.api_auth_token is None
         or not settings.api_auth_token.get_secret_value().strip()
     ):
-        raise ValueError(
-            "API_AUTH_TOKEN must be set when API_AUTH_REQUIRED is true"
-        )
+        raise ValueError("API_AUTH_TOKEN must be set when API_AUTH_REQUIRED is true")

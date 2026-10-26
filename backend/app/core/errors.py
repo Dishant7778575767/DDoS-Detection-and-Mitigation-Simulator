@@ -46,15 +46,16 @@ def _error_response(
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
-    async def handle_http_error(
-        request: Request, exc: HTTPException
-    ) -> JSONResponse:
+    async def handle_http_error(request: Request, exc: HTTPException) -> JSONResponse:
         errors: dict[int, tuple[str, str]] = {
             status.HTTP_400_BAD_REQUEST: ("INVALID_REQUEST", "Invalid request."),
             status.HTTP_401_UNAUTHORIZED: ("UNAUTHORIZED", "Authentication required."),
             status.HTTP_403_FORBIDDEN: ("FORBIDDEN", "Access denied."),
             status.HTTP_404_NOT_FOUND: ("NOT_FOUND", "Resource not found."),
-            status.HTTP_409_CONFLICT: ("CONFLICT", "Request conflicts with current state."),
+            status.HTTP_409_CONFLICT: (
+                "CONFLICT",
+                "Request conflicts with current state.",
+            ),
             status.HTTP_413_CONTENT_TOO_LARGE: (
                 "REQUEST_TOO_LARGE",
                 "Request exceeds the allowed size.",
@@ -84,9 +85,7 @@ def install_error_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def handle_unexpected_error(
-        request: Request, exc: Exception
-    ) -> JSONResponse:
+    async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
         logger.exception(
             "Unhandled request error request_id=%s",
             _request_id(request),
