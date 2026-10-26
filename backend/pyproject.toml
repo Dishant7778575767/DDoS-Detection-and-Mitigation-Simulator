@@ -18,6 +18,7 @@ dependencies = [
     "joblib",
     "pandas",
     "numpy",
+    "httpx2",
     "PyYAML",
 ]
 

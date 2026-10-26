@@ -314,7 +314,14 @@ recovery tests. No risk is considered eliminated until evidence supports it.
   model comparison, selection, and approved artifact export are complete.
 - [x] **Phase 3 — Backend, detection and policy:** Verified complete. Ingestion, detection, hybrid policy, safety gate, simulation, and all 14 PRD section 7 endpoints are implemented and verified with 33 passing automated tests.
 - [x] **Phase 4 — Dashboard:** Verified complete. Typed API client, polling engine, dark cybersecurity theme (#050B14 + cyan/sky), Recharts telemetry, and all 5 dashboard views implemented with 0 lint and 0 typecheck errors.
-- [ ] **Phase 5 — Simulation and integration testing:** Not complete.
+- [x] **Phase 5 — Simulation and integration testing:** Verified complete.
+  Bounded demonstration generator (`scripts/send_test_traffic.py`) and CSV
+  replay (`scripts/replay_dataset.py`) implemented with `demo-generator:` and
+  `demo-replay:` labels. All PRD Section 10.2 test cases (TC-01 to TC-07, TC-11
+  to TC-16, and TC-08 simulation safety proof) implemented and passing (56/56
+  total tests pass). Benchmark evidence recorded in
+  `data/fixtures/benchmark_evidence.json` (inference latency mean 8.17ms < 10ms,
+  peak memory 0.67MB < 512MB).
 - [ ] **Phase 6 — Isolated Linux lab:** Not complete; remains gated by prior
   safety evidence and explicit approval.
 - [ ] **Phase 7 — Release hardening:** Not complete.

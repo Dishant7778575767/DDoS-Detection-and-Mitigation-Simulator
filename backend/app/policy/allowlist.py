@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 
 # Built-in critical protected infrastructure addresses that must never be targeted for rate-limiting
+# Includes local host, common recursive DNS, and standard default gateway management addresses.
 PROTECTED_IPS: set[str] = {
     "127.0.0.1",
     "::1",
@@ -12,6 +13,10 @@ PROTECTED_IPS: set[str] = {
     "1.1.1.1",
     "8.8.8.8",
     "8.8.4.4",
+    "192.168.1.1",
+    "192.168.0.1",
+    "10.0.0.1",
+    "172.16.0.1",
 }
 
 # Protected subnets (e.g., local loopback)

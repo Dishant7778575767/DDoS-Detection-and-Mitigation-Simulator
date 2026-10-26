@@ -16,14 +16,14 @@ production-ready and does not guarantee DDoS protection on arbitrary live networ
 
 ## Current status
 
-Phases 1, 2, 3, and 4 are **verified complete**:
+Phases 1, 2, 3, 4, and 5 are **verified complete**:
 - **Phase 1 (Foundation):** Validated configuration, token-protected health endpoint, SQLite connection, Alembic migration framework, and runnable frontend navigation shell. Hosted CI is green (`40202861846` for commit `f15f000`).
 - **Phase 2 (Data & ML Baseline):** The CIC-DDoS2019 dataset was validated, cleaned, and deterministically partitioned. Both Random Forest and Isolation Forest candidates were trained and evaluated on held-out test splits. Random Forest achieved 99.98% precision, 99.96% recall, 99.97% F1, 1.73% FPR, and 4.45 ms p95 latency, passing all criteria, and was exported as the runtime approved model (`models/approved_model.joblib`) under schema `1.0.0`. Isolation Forest produced a 54.76% FPR and was rejected. Detailed evidence is documented in [docs/model_evaluation_report.md](docs/model_evaluation_report.md).
 - **Phase 3 (Backend, Detection, and Policy):** Fully implemented SQLAlchemy domain persistence (observations, detections, alerts, mitigations, thresholds, and audit), Pydantic ingestion with UTC timestamps and range validation, runtime model inference, sliding-window traffic aggregation, dual-signal hybrid policy engine, fail-closed safety gate (enforcing allowlists, duration/rate limits, concurrency caps, and emergency disable), simulation mitigation adapter, state machine lifecycle management, and all 14 PRD Section 7 REST API endpoints. The test suite comprises 33 passing automated tests with 0 lint errors.
 - **Phase 4 (Dashboard):** Implemented all 5 core monitoring and control views (Overview with live Recharts telemetry, Alerts feed with flow inspection modal, Mitigation control room with simulation countdowns and Emergency Disable kill switch, History audit trail with CSV export, and Settings with threshold sliders, active model metadata, and an interactive policy matrix preview). Styled with an obsidian-dark cybersecurity theme (`#050B14`) and electric cyan/sky accents (`#00E5FF`). Verified with 0 ESLint and 0 TypeScript errors.
+- **Phase 5 (Simulation & Integration):** Bounded demonstration generator (`scripts/send_test_traffic.py`) and dataset replay (`scripts/replay_dataset.py`) routed through runtime pipeline with `demo-generator:` and `demo-replay:` provenance. Full integration suite verifies TC-01 to TC-07, TC-11 to TC-16, TC-08 simulation safety proof (0 host firewall or network socket changes), and reliability/performance benchmarks (mean inference latency 8.17 ms, peak memory 0.67 MB). All 56 tests pass.
 
 Upcoming phases:
-- **Phase 5 (Simulation & Integration):** End-to-end traffic replay and verification of host network non-interference.
 - **Phase 6 (Isolated Linux Lab):** Gated Linux `nftables`/`tc` enforcement in an isolated lab environment.
 - **Phase 7 (Release Hardening):** Full regression, security review, and release verification.
 

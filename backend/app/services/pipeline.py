@@ -66,11 +66,39 @@ def process_flow_pipeline(
     )
 
     # 3. Detection inference
-    prediction = run_flow_inference(features)
+    try:
+        prediction = run_flow_inference(features)
+    except Exception as exc:
+        record_audit_event(
+            session=session,
+            event_type="pipeline_failure",
+            action="inference_failed",
+            actor="pipeline",
+            details={
+                "observation_id": obs.id,
+                "error": str(exc),
+                "source_id": source_id,
+            },
+        )
+        raise
 
     # 4. Policy evaluation
-    active_config = thresh_repo.get_active()
-    policy_decision = evaluate_hybrid_policy(prediction, features, active_config)
+    try:
+        active_config = thresh_repo.get_active()
+        policy_decision = evaluate_hybrid_policy(prediction, features, active_config)
+    except Exception as exc:
+        record_audit_event(
+            session=session,
+            event_type="pipeline_failure",
+            action="policy_evaluation_failed",
+            actor="pipeline",
+            details={
+                "observation_id": obs.id,
+                "error": str(exc),
+                "source_id": source_id,
+            },
+        )
+        raise
 
     event_id = f"evt_{uuid4().hex[:12]}"
     detection = det_repo.create(

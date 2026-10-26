@@ -42,6 +42,13 @@ def validate_flow_features(features: dict[str, Any], schema_version: str) -> Non
             f"Missing required features for schema {FEATURE_SCHEMA_VERSION}: {missing}"
         )
 
+    # Check for extraneous / unexpected features
+    unexpected = [name for name in features if name not in FEATURE_NAMES]
+    if unexpected:
+        raise ValueError(
+            f"Extraneous unexpected features for schema {FEATURE_SCHEMA_VERSION}: {unexpected[:5]}"
+        )
+
     # Check that values are finite numbers
     for name, val in features.items():
         if not isinstance(val, (int, float)):
