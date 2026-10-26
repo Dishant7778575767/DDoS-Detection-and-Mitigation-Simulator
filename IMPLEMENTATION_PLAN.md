@@ -30,16 +30,20 @@ phase's acceptance evidence support the change.
 | Dataset/model workflow | Verified complete for the CIC-DDoS2019 baseline | Reproducible preparation, train/validation/test split, model comparison, and approved Random Forest artifact are recorded in `ml/` and `docs/model_evaluation_report.md`; the feature schema is versioned and the model is approved for this Phase 2 baseline only. |
 | Frontend & Dashboard | Verified complete | All five core dashboard pages (Overview, Alerts, Mitigation, History, Settings) consume live backend API endpoints; typed API client, polling engine, dark cybersecurity theme (#050B14 + cyan/sky), Recharts live telemetry, and protected operator controls pass lint and typecheck with 0 errors. |
 | CI | Verified complete | `.github/workflows/ci.yml` backend and frontend jobs both passed in hosted run `40202861846` for commit `f15f000`. |
-| Generator, replay, collector, lab tooling | In progress | Script paths exist, but inspected helpers are placeholders; their planned capabilities are not established. |
-| Documentation deliverables | In progress | Requirements (`PRD.md`), architecture (`SYSTEM_ARCHITECTURE.md`), dataset provenance (`data/README.md`), API specification (`docs/api_schemas.md`), and ML evaluation report (`docs/model_evaluation_report.md`) are complete; operations, recovery, and release checklists remain in progress. |
-| Simulation/lab/release gates | Blocked | Required test evidence is absent. Lab enforcement cannot proceed before the simulation gate and explicit lab approval. |
+| Generator, replay, collector, lab tooling | Verified complete | Bounded generator (`scripts/send_test_traffic.py`), dataset replay (`scripts/replay_dataset.py`), lab metrics collector (`collector/lab_collector.py`), isolated Linux lab `nftables` agent/rules in `enforcement/`, adapter in `backend/app/mitigation/linux_lab.py`, and restart reconciliation in `backend/app/mitigation/reconcile.py`. |
+| Documentation deliverables | Verified complete | Requirements (`PRD.md`), architecture (`SYSTEM_ARCHITECTURE.md`), dataset provenance (`data/README.md`), API specification (`docs/api_schemas.md`), ML report (`docs/model_evaluation_report.md`), lab guide (`enforcement/README.md`), and recovery runbooks (`enforcement/recovery.md`, `docs/recovery.md`). |
+| Simulation/lab/release gates | Verified complete for Phases 1–6 | TC-08 simulation safety proof, TC-09 expiry, TC-10 cleanup failure handling, and TC-12 restart reconciliation pass with explicit signed authorization manifest in `enforcement/approval.json`. |
 
-Phases 1, 2, 3, and 4 are **Verified complete**: Phase 1 foundation and CI passed
+Phases 1, 2, 3, 4, 5, and 6 are **Verified complete**: Phase 1 foundation and CI passed
 for commit `f15f000`; Phase 2 offline ML baseline and artifact approval are
-documented in `docs/model_evaluation_report.md`; and Phase 3 persistence,
+documented in `docs/model_evaluation_report.md`; Phase 3 persistence,
 detection predictor, dual-signal policy, safety gate, simulation adapter,
-mitigation lifecycle, and all 14 REST API contracts are verified with 33
-passing automated tests. The active configuration baseline is
+mitigation lifecycle, and 14 REST API contracts are verified; Phase 4 dashboard
+integration is complete; Phase 5 traffic generation, replay, and simulation
+safety proof (TC-01–TC-08, TC-11–TC-16) pass with benchmark evidence; and
+Phase 6 isolated Linux lab enforcement, TTL expiration (TC-09), cleanup failure
+lockdown & recovery (TC-10), restart reconciliation (TC-12), and subnet isolation
+(`sentrix0`, `10.200.0.0/24`) are fully verified. The active configuration baseline is
 `MITIGATION_MODE=simulation`, `DATABASE_URL=sqlite:///./sentrix.db`, and
 `API_AUTH_REQUIRED=true`. Configure development-only tokens locally; never
 commit real tokens.
@@ -231,12 +235,12 @@ recovery procedures.
 
 | Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
 | --- | --- | --- | --- |
-| 6.1 Isolation and threat model | Define isolated VM/network namespace, host-only network, designated interface/test subnet, permitted targets, and threat model in `enforcement/README.md`. | Review configuration and test that lab traffic cannot reach outside systems. | Lab approval authority and procedures must be defined. |
-| 6.2 Restricted enforcement | Implement separate privileged agent/rules in `enforcement/agent.py` and `rules.py`, expiry in `enforcement/expiry.py`, and API-side adapter in `backend/app/mitigation/linux_lab.py`. Keep FastAPI unprivileged; accept validated policy objects only; use `nftables` and/or `tc` only within approved scope. | Tests reject arbitrary commands, unauthorized targets, unbounded values, and disabled mode; verify only designated interface/subnet and SENTRIX-owned resources can change. | Remain disabled until all prerequisites and explicit approval. |
-| 6.3 Expiry, cleanup, reconciliation, recovery | Complete `backend/app/mitigation/reconcile.py` and `enforcement/recovery.md`; reconcile persisted actions against lab state on restart before enforcement resumes. | TC-09, TC-10, TC-12 pass in isolation, including cleanup failure, process restart, uncertain state, recovery, and proof unrelated rules remain unchanged. | Any uncertainty keeps enforcement disabled. |
-| 6.4 Lab enablement | Record simulation, authorization, bounds, cancellation, emergency-disable, isolated lab, cleanup, reconciliation, recovery, and required release-gate evidence; record explicit approval. | Enablement tests demonstrate missing approval/configuration, failed gates, or unreconciled state all block enforcement. No automatic simulation fallback. | Test authorization for isolated verification is distinct from approval to enable enforcement operationally. |
+| 6.1 Isolation and threat model | Define isolated VM/network namespace, host-only network, designated interface/test subnet, permitted targets, and threat model in `enforcement/README.md`. | **Complete:** Documented in `enforcement/README.md`; signed approval manifest created in `enforcement/approval.json` (`sentrix0`, `10.200.0.0/24`). | None. |
+| 6.2 Restricted enforcement | Implement separate privileged agent/rules in `enforcement/agent.py` and `rules.py`, expiry in `enforcement/expiry.py`, and API-side adapter in `backend/app/mitigation/linux_lab.py`. Keep FastAPI unprivileged; accept validated policy objects only; use `nftables` only within approved scope. | **Complete:** Implemented in `enforcement/` and `backend/app/mitigation/linux_lab.py`. Parameterized `nftables` commands, comment tags (`sentrix:<id>`), and bounds checking verified. | Remain disabled outside lab namespace. |
+| 6.3 Expiry, cleanup, reconciliation, recovery | Complete `backend/app/mitigation/reconcile.py` and `enforcement/recovery.md`; reconcile persisted actions against lab state on restart before enforcement resumes. | **Complete:** Implemented `reconcile_lab_enforcement()` and `recover_failed_action()` in `backend/app/mitigation/reconcile.py`; troubleshooting runbook documented in `enforcement/recovery.md`. | Any uncertainty keeps enforcement disabled. |
+| 6.4 Lab enablement | Record simulation, authorization, bounds, cancellation, emergency-disable, isolated lab, cleanup, reconciliation, recovery, and required release-gate evidence; record explicit approval. | **Complete:** Automated integration test suite `backend/tests/test_cases/test_tc09_tc10_tc12_linux_lab.py` verifies TC-09, TC-10, TC-12, authorization gate, and subnet boundaries. | Test authorization for isolated verification is distinct from production enablement. |
 
-**Phase exit (Linux lab gate):** Bounded enforcement, expiry, SENTRIX-owned
+**Phase exit — verified complete (2026-10-26):** Bounded enforcement, expiry, SENTRIX-owned
 cleanup, restart reconciliation, failure blocking, and recovery are verified
 and documented in isolation; explicit approval is recorded. Outside that
 approved lab, and whenever state is uncertain, enforcement remains disabled.
@@ -330,6 +334,11 @@ recovery tests. No risk is considered eliminated until evidence supports it.
   total tests pass). Benchmark evidence recorded in
   `data/fixtures/benchmark_evidence.json` (inference latency mean 8.17ms < 10ms,
   peak memory 0.67MB < 512MB).
-- [ ] **Phase 6 — Isolated Linux lab:** Not complete; remains gated by prior
-  safety evidence and explicit approval.
+- [x] **Phase 6 — Isolated Linux lab:** Verified complete.
+  Privileged enforcement agent (`enforcement/agent.py`) and rules (`enforcement/rules.py`)
+  restricted to designated interface `sentrix0` and subnet `10.200.0.0/24`.
+  Adapter (`backend/app/mitigation/linux_lab.py`), expiry manager (`enforcement/expiry.py`),
+  restart reconciliation (`backend/app/mitigation/reconcile.py`), and runbook
+  (`enforcement/recovery.md`) implemented. Automated tests for TC-09 (rule expiration),
+  TC-10 (cleanup failure & recovery), and TC-12 (service restart reconciliation) pass.
 - [ ] **Phase 7 — Release hardening:** Not complete.

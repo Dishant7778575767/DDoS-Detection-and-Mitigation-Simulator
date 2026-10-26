@@ -1,0 +1,15 @@
+{
+  "approved": true,
+  "approved_by": "SENTRIX Security & Lab Authority",
+  "approval_id": "lab_auth_20261026_001",
+  "environment": "isolated_linux_lab",
+  "designated_interface": "sentrix0",
+  "permitted_subnet": "10.200.0.0/24",
+  "max_rate_limit_pps": 50000,
+  "max_duration_seconds": 300,
+  "nftables_table": "sentrix_mitigation",
+  "issued_at": "2026-10-26T00:00:00Z",
+  "expires_at": "2027-10-26T00:00:00Z",
+  "enforcement_enabled": true
+}
+

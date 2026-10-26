@@ -22,6 +22,7 @@ def db_session() -> Session:
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     with session_factory() as session:
         yield session
+    engine.dispose()
 
 
 def test_observation_repository(db_session: Session) -> None:

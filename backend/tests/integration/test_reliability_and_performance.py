@@ -163,35 +163,38 @@ def test_missing_model_failure_is_audited(tmp_path: Path, test_fixtures: dict) -
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
-    with session_factory() as session:
-        features = test_fixtures["scenarios"]["tc01_normal"]["features"]
+    try:
+        with session_factory() as session:
+            features = test_fixtures["scenarios"]["tc01_normal"]["features"]
 
-        with (
-            patch(
-                "app.services.pipeline.run_flow_inference",
-                side_effect=ModelNotFoundError("Model missing"),
-            ),
-            pytest.raises(ModelNotFoundError),
-        ):
-            process_flow_pipeline(
-                session=session,
-                source_id="demo-generator:fail_audit",
-                timestamp="2026-10-26T12:00:00Z",
-                window_seconds=10.0,
-                feature_schema_version="1.0.0",
-                features=features,
+            with (
+                patch(
+                    "app.services.pipeline.run_flow_inference",
+                    side_effect=ModelNotFoundError("Model missing"),
+                ),
+                pytest.raises(ModelNotFoundError),
+            ):
+                process_flow_pipeline(
+                    session=session,
+                    source_id="demo-generator:fail_audit",
+                    timestamp="2026-10-26T12:00:00Z",
+                    window_seconds=10.0,
+                    feature_schema_version="1.0.0",
+                    features=features,
+                )
+
+            # Verify that an audit event was recorded capturing the failure outcome
+            failure_events = (
+                session.query(AuditEventModel)
+                .filter_by(event_type="pipeline_failure", action="inference_failed")
+                .all()
             )
-
-        # Verify that an audit event was recorded capturing the failure outcome
-        failure_events = (
-            session.query(AuditEventModel)
-            .filter_by(event_type="pipeline_failure", action="inference_failed")
-            .all()
-        )
-        assert len(failure_events) == 1
-        ev = failure_events[0]
-        assert ev.actor == "pipeline"
-        assert "Model missing" in ev.details_json
+            assert len(failure_events) == 1
+            ev = failure_events[0]
+            assert ev.actor == "pipeline"
+            assert "Model missing" in ev.details_json
+    finally:
+        engine.dispose()
 
 
 def test_inference_and_pipeline_performance_benchmarks(
@@ -229,18 +232,21 @@ def test_inference_and_pipeline_performance_benchmarks(
     t_start = time.perf_counter()
     pipeline_iterations = 30
 
-    with session_factory() as session:
-        for idx in range(pipeline_iterations):
-            process_flow_pipeline(
-                session=session,
-                source_id=f"demo-generator:bench_{idx}",
-                timestamp="2026-10-26T12:00:00Z",
-                window_seconds=10.0,
-                feature_schema_version="1.0.0",
-                features=features,
-                target_ip="192.168.10.99",
-                target_port=80,
-            )
+    try:
+        with session_factory() as session:
+            for idx in range(pipeline_iterations):
+                process_flow_pipeline(
+                    session=session,
+                    source_id=f"demo-generator:bench_{idx}",
+                    timestamp="2026-10-26T12:00:00Z",
+                    window_seconds=10.0,
+                    feature_schema_version="1.0.0",
+                    features=features,
+                    target_ip="192.168.10.99",
+                    target_port=80,
+                )
+    finally:
+        engine.dispose()
 
     t_end = time.perf_counter()
     _current_mem, peak_mem = tracemalloc.get_traced_memory()

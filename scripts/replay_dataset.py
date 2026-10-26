@@ -115,11 +115,10 @@ def replay_file(
             try:
                 with urllib.request.urlopen(req, timeout=10.0) as resp:
                     resp_data = json.loads(resp.read().decode("utf-8"))
-                    pol = resp_data.get("detection", {}).get(
-                        "policy_decision", "unknown"
-                    )
-                    score = resp_data.get("detection", {}).get("score", 0.0)
-                    has_alert = resp_data.get("alert_created", False)
+                    det = resp_data.get("detection", {})
+                    pol = resp_data.get("policy_decision") or det.get("policy_decision", "unknown")
+                    score = resp_data.get("score") if resp_data.get("score") is not None else det.get("score", 0.0)
+                    has_alert = resp_data.get("alert_created", bool(resp_data.get("alert_id")))
                     if has_alert:
                         alert_count += 1
 

@@ -28,5 +28,9 @@
   },
   "allowScripts": {
     "eslint@10.13.0": true
+  },
+  "optionalDependencies": {
+    "@next/swc-linux-x64-gnu": "^16.4.3",
+    "lightningcss-linux-x64-gnu": "^1.33.0"
   }
 }

@@ -22,9 +22,12 @@ def test_initial_migration_is_repeatable_and_uses_configured_database(
     get_settings.cache_clear()
     command.upgrade(config, "head")
 
-    with sqlite3.connect(database_path) as connection:
+    connection = sqlite3.connect(database_path)
+    try:
         revision = connection.execute(
             "SELECT version_num FROM alembic_version"
         ).fetchone()
+    finally:
+        connection.close()
 
     assert revision == ("0001_initial",)

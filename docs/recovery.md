@@ -91,22 +91,30 @@ This document outlines standard operating recovery procedures for SENTRIX. It pr
 
 ---
 
-### Runbook 5: Linux Lab Enforcement Cleanup (Phase 6 Preparedness)
-**Scenario**: Future restricted Linux lab enforcement (`nftables`/`tc`) left orphaned rules after a hard reset.
+### Runbook 5: Linux Lab Enforcement Cleanup & Recovery (Phase 6)
+**Scenario**: Restricted Linux lab enforcement (`nftables`/`tc`) encountered a cleanup verification failure (TC-10) or service restart mismatch (TC-12).
 
 > [!IMPORTANT]
-> SENTRIX in Phase 3–5 operates strictly in **Simulation Mode**. Zero host changes ever occur. The following procedure applies only if isolated Linux lab enforcement is approved and enabled in Phase 6.
+> The isolated Linux lab operates strictly within the designated interface `sentrix0` and subnet `10.200.0.0/24`. Complete step-by-step procedures are documented in [enforcement/recovery.md](../enforcement/recovery.md).
 
-1. **Identify SENTRIX-Owned Tables**:
-   - Only rules created within the dedicated `sentrix` table/set may be purged. Never flush default chains.
-2. **Flush Owned Ruleset**:
+1. **Safety Lockdown**:
+   - The system automatically triggers emergency disable on any cleanup failure or restart mismatch.
+   - All subsequent mitigations are blocked fail-closed.
+2. **Inspect & Delete Orphaned Handles**:
    ```bash
-   sudo nft delete table inet sentrix_mitigation 2>/dev/null || true
-   sudo tc qdisc del dev eth0 root 2>/dev/null || true
+   sudo ip netns exec sentrix_ns nft -a list table inet sentrix_mitigation
+   sudo ip netns exec sentrix_ns nft delete rule inet sentrix_mitigation forward handle <handle_id>
    ```
-3. **Reset Mode**:
-   - Set `MITIGATION_MODE=simulation` in `.env`.
-   - Restart the daemon.
+3. **Execute Procedural Recovery**:
+   ```python
+   from app.mitigation.reconcile import recover_failed_action
+   recover_failed_action(session, agent, action_id="<action_id>")
+   ```
+4. **Re-enable Safety Gate**:
+   ```bash
+   curl -X POST -H "Authorization: Bearer <API_TOKEN>" \
+     "http://127.0.0.1:8000/api/v1/mitigations/disable?enable=true"
+   ```
 
 ---
 

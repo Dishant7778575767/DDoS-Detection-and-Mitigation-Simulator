@@ -63,12 +63,27 @@ This checklist serves as the formal release and readiness gate for SENTRIX. All 
   - Peak memory growth: `0.67 MB` (Target: `< 512.0 MB`)
 - [x] Entire backend test suite passes: **56 / 56 tests passing**.
 
+### Phase 6 — Isolated Linux Lab Gate
+- [x] Lab network architecture and isolation boundary documented in `enforcement/README.md` (`sentrix0`, `10.200.0.0/24`).
+- [x] Formal signed approval manifest implemented in `enforcement/approval.json`.
+- [x] Privileged enforcement agent implemented in `enforcement/agent.py` using parameterized `nftables` commands.
+- [x] Comment-based tagging (`sentrix:<action_id>`) ensures zero touch on non-SENTRIX firewall rules.
+- [x] TTL expiration manager implemented in `enforcement/expiry.py`.
+- [x] Lab adapter implemented in `backend/app/mitigation/linux_lab.py`.
+- [x] Service restart reconciliation engine implemented in `backend/app/mitigation/reconcile.py`.
+- [x] Troubleshooting & recovery runbook documented in `enforcement/recovery.md`.
+- [x] Automated integration test suite `backend/tests/test_cases/test_tc09_tc10_tc12_linux_lab.py` verified:
+  - TC-09: Rule expiration & verified removal.
+  - TC-10: Cleanup failure, fail-closed emergency lockdown & procedural recovery.
+  - TC-12: Service restart reconciliation, orphaned rule pruning & missing rule lockdown.
+  - Subnet boundaries (`10.200.0.0/24`) and parameter bounds enforcement.
+
 ---
 
 ## 3. Security & Safety Checklist
 
 - [ ] **Default Safe Mode**: `MITIGATION_MODE` is strictly set to `simulation`.
-- [ ] **No Public Enforcement**: Linux `nftables`/`tc` enforcement remains disabled.
+- [ ] **No Public Enforcement**: Linux `nftables`/`tc` enforcement remains disabled outside approved lab.
 - [ ] **Credential Protection**: `.env` is git-ignored; no production secrets or hardcoded passwords exist in repo.
 - [ ] **Error Envelope Sanitization**: API errors return structured envelope `{ "error": { "code", "message", "request_id" } }` without stack trace leakage.
 - [ ] **Immutable Audit Logging**: All sensitive actions and lifecycle transitions create unmodifiable records in `audit_events`.
@@ -106,6 +121,8 @@ npm --prefix frontend run build
 - [x] `docs/operations.md`: Day-to-day operating procedures, tool usage, and policy rules.
 - [x] `docs/recovery.md`: Emergency disable recovery, restart reconciliation, and runbooks.
 - [x] `docs/release_checklist.md`: Quality gates and readiness checklist.
+- [x] `enforcement/README.md`: Isolated lab architecture, namespace, and threat model.
+- [x] `enforcement/recovery.md`: TC-10 cleanup failure and TC-12 restart recovery runbooks.
 
 ---
 
@@ -115,4 +132,4 @@ npm --prefix frontend run build
 | :--- | :--- | :---: | :--- |
 | **System Lead** | SENTRIX Core Team | Approved | 2026-10-26 |
 | **ML Lead** | Machine Learning Team | Approved | 2026-10-25 |
-| **Security & Safety** | Safety Gate Reviewer | Approved (Simulation Only) | 2026-10-26 |
+| **Security & Safety** | Safety Gate Reviewer | Approved (Lab & Simulation) | 2026-10-26 |

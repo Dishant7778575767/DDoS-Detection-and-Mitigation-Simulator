@@ -65,6 +65,15 @@ def ingest_flow_observation(
         "policy_decision": result["policy_decision"],
         "alert_id": result["alert_id"],
         "mitigation_action_id": result["mitigation_action_id"],
+        "prediction": result["prediction"],
+        "score": result["score"],
+        "alert_created": result["alert_id"] is not None,
+        "detection": {
+            "prediction": result["prediction"],
+            "score": result["score"],
+            "policy_decision": result["policy_decision"],
+            "traffic_threshold_exceeded": result["traffic_threshold_exceeded"],
+        },
     }
 
 

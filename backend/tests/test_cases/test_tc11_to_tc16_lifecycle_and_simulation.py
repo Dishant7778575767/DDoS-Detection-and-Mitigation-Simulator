@@ -47,6 +47,7 @@ def db_session(tmp_path: Path) -> Session:
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     with session_factory() as session:
         yield session
+    engine.dispose()
 
 
 @pytest.fixture(autouse=True)
