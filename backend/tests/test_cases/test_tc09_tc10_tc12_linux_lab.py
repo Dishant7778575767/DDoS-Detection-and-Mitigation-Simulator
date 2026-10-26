@@ -255,7 +255,7 @@ def test_tc09_rule_expiration_and_verified_removal(db_session: Session) -> None:
     assert result["host_networking_modified"] is True
 
     # Register with expiry manager
-    base_time = datetime.datetime.now(datetime.UTC)
+    base_time = datetime.datetime.now(datetime.timezone.utc)
     expiry_mgr.track_action(
         action_id=action_id,
         target_ip=target_ip,
@@ -311,7 +311,7 @@ def test_tc10_cleanup_failure_engages_lockdown_and_recovery(
     # Give it specific action_id for test
     mit.action_id = action_id
     mit.expires_at = (
-        datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=10)
+        datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=10)
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
     db_session.commit()
 
@@ -408,7 +408,7 @@ def test_tc12_service_restart_missing_rule_triggers_fail_closed(
     # DB has an active applied action not expired yet
     action_id = "act_missing_kernel_rule"
     future_exp = (
-        datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=120)
+        datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=120)
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     mit = repo.create(
@@ -454,7 +454,7 @@ def test_tc12_clean_restart_reconciliation(db_session: Session) -> None:
 
     action_id = "act_in_sync"
     future_exp = (
-        datetime.datetime.now(datetime.UTC) + datetime.timedelta(seconds=180)
+        datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=180)
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     mit = repo.create(

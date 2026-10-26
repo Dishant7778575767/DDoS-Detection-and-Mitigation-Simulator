@@ -28,7 +28,7 @@ def reconcile_expired_mitigations(session: Session) -> list[dict[str, Any]]:
     """Scan active/simulated mitigations and expire those past their duration."""
     repo = MitigationRepository(session)
     active_actions = repo.get_active_or_simulated()
-    now_utc = datetime.datetime.now(datetime.UTC)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
     expired_actions: list[dict[str, Any]] = []
 
     for action in active_actions:
@@ -73,7 +73,7 @@ def reconcile_lab_enforcement(
     5. On any state mismatch or cleanup failure, locks down via emergency disable.
     """
     repo = MitigationRepository(session)
-    now_utc = datetime.datetime.now(datetime.UTC)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
     now_iso = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     result: dict[str, Any] = {
@@ -247,7 +247,7 @@ def recover_failed_action(
             f"Cannot recover action '{action_id}': rule is still active in kernel."
         )
 
-    now_iso = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_iso = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     repo.update_status(action_id, "recovered")
 
     record_audit_event(

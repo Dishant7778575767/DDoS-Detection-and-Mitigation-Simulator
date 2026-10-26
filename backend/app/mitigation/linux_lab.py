@@ -55,7 +55,7 @@ def verify_lab_authorization(approval_path: Path | None = None) -> dict[str, Any
     if expires_at:
         try:
             exp_dt = datetime.datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-            if datetime.datetime.now(datetime.UTC) >= exp_dt:
+            if datetime.datetime.now(datetime.timezone.utc) >= exp_dt:
                 raise LabAuthorizationError(
                     f"Lab approval expired at {expires_at}. Enforcement is halted."
                 )

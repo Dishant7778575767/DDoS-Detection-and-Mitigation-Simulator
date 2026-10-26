@@ -32,7 +32,7 @@ class EnforcementExpiryManager:
         applied_at_utc: datetime.datetime | None = None,
     ) -> None:
         """Register a newly applied rule for TTL tracking."""
-        base_time = applied_at_utc or datetime.datetime.now(datetime.UTC)
+        base_time = applied_at_utc or datetime.datetime.now(datetime.timezone.utc)
         expires_at = base_time + datetime.timedelta(seconds=duration_seconds)
         self._tracked_rules[action_id] = {
             "action_id": action_id,
@@ -45,7 +45,7 @@ class EnforcementExpiryManager:
         self, now_dt: datetime.datetime | None = None
     ) -> list[dict[str, Any]]:
         """Scan tracked rules, remove expired entries from nftables, and verify removal."""
-        now = now_dt or datetime.datetime.now(datetime.UTC)
+        now = now_dt or datetime.datetime.now(datetime.timezone.utc)
         expired_results: list[dict[str, Any]] = []
 
         for action_id, info in list(self._tracked_rules.items()):
