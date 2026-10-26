@@ -27,6 +27,7 @@ from app.api.v1.traffic import get_traffic_summary, ingest_flow_observation
 from app.core.config import get_settings
 from app.features.definitions import FEATURE_NAMES, FEATURE_SCHEMA_VERSION
 from app.ingestion.schemas import FlowObservationRequest
+from app.safety.gate import set_emergency_disabled
 from app.storage.database import Base
 
 
@@ -122,8 +123,11 @@ def test_8_to_11_mitigations_endpoints(db_session: Session) -> None:
     assert cancel_res["status"] == "cancelled"
 
     # 4. Emergency disable
-    disable_res = emergency_disable_mitigations(db_session)
-    assert disable_res["emergency_disabled"] is True
+    try:
+        disable_res = emergency_disable_mitigations(db_session)
+        assert disable_res["emergency_disabled"] is True
+    finally:
+        set_emergency_disabled(False)
 
 
 def test_12_audit_endpoint(db_session: Session) -> None:

@@ -20,18 +20,37 @@ class ModelNotFoundError(FileNotFoundError):
     """Raised when the approved runtime model artifact is missing."""
 
 
+def _resolve_model_path(path: Path) -> Path:
+    """Resolve a model path considering both repo root and backend/ working directory."""
+    if path.exists():
+        return path
+    parent_path = Path("..") / path
+    if parent_path.exists():
+        return parent_path
+    return path
+
+
 @lru_cache(maxsize=2)
 def load_runtime_model(model_path_str: str | None = None) -> Any:
     """Load and validate the approved ML model artifact."""
     if model_path_str is not None:
-        model_path = Path(model_path_str)
+        model_path = _resolve_model_path(Path(model_path_str))
+        if not model_path.exists():
+            raise ModelNotFoundError(
+                f"Approved runtime model not found at '{model_path}'. Ensure Phase 2 export is complete."
+            )
     else:
-        model_path = get_settings().model_path
-
-    if not model_path.exists():
-        raise ModelNotFoundError(
-            f"Approved runtime model not found at '{model_path}'. Ensure Phase 2 export is complete."
-        )
+        configured_path = get_settings().model_path
+        model_path = _resolve_model_path(configured_path)
+        if not model_path.exists():
+            # Fall back to versioned approved candidate if exported link/copy is missing
+            candidate = _resolve_model_path(Path("models/rf-1.0.0/model.joblib"))
+            if candidate.exists():
+                model_path = candidate
+            else:
+                raise ModelNotFoundError(
+                    f"Approved runtime model not found at '{configured_path}'. Ensure Phase 2 export is complete."
+                )
 
     try:
         model = joblib.load(model_path)

@@ -43,6 +43,8 @@ dist/
 # Generated model artifacts
 models/*.joblib
 models/**/*.joblib
+!models/approved_model.joblib
+!models/rf-1.0.0/model.joblib
 
 # Notebook and tool caches
 .ipynb_checkpoints/

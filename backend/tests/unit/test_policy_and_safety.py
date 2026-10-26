@@ -54,6 +54,8 @@ def test_hybrid_policy_decision_matrix() -> None:
 
 def test_safety_gate_allowlist_and_bounds() -> None:
     """Test safety gate checks for protected IPs, parameter bounds, and emergency disable."""
+    set_emergency_disabled(False)
+
     # Protected IP must be rejected
     assert is_protected_target("127.0.0.1") is True
     assert is_protected_target("8.8.8.8") is True
@@ -78,14 +80,15 @@ def test_safety_gate_allowlist_and_bounds() -> None:
     assert res_valid.allowed is True
 
     # Emergency disable check
-    set_emergency_disabled(True)
-    assert is_emergency_disabled() is True
-    res_emergency = validate_safety_gate(
-        "192.168.1.50", rate_limit_pps=1000, duration_seconds=60
-    )
-    assert res_emergency.allowed is False
-    assert "Emergency disable is currently active" in res_emergency.rejection_reason
+    try:
+        set_emergency_disabled(True)
+        assert is_emergency_disabled() is True
+        res_emergency = validate_safety_gate(
+            "192.168.1.50", rate_limit_pps=1000, duration_seconds=60
+        )
+        assert res_emergency.allowed is False
+        assert "Emergency disable is currently active" in res_emergency.rejection_reason
+    finally:
+        set_emergency_disabled(False)
 
-    # Reset emergency disable
-    set_emergency_disabled(False)
     assert is_emergency_disabled() is False
