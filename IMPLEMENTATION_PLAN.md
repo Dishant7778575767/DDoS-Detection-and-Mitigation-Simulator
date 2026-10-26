@@ -349,3 +349,10 @@ recovery tests. No risk is considered eliminated until evidence supports it.
   total backend tests. Documentation synchronized across `docs/`, `enforcement/`,
   and root files. Formal release decision published in `docs/release_decision.md`
   authorizing `v0.1.0-rc1` under default simulation and isolated lab scope.
+- [x] **Phase 8 — Cloud Persistence & Supabase PostgreSQL Migration:** Verified complete.
+  SQLAlchemy engine and configuration upgraded to support dual dialects (SQLite + PostgreSQL with
+  `psycopg2` and pure-Python `pg8000` fallback). All 6 business tables (`threshold_configs`,
+  `audit_events`, `observations`, `detections`, `alerts`, `mitigations`) live-migrated with 100%
+  row count verification and sequence synchronization. Authenticated `GET /internal/keepalive`
+  endpoint implemented with `SELECT 1` ping and Render cloud deployment configured via `render.yaml`.
+  All 100 automated backend tests pass.

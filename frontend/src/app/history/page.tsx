@@ -124,7 +124,7 @@ export default function HistoryPage() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Audit Records ({data?.total || 0})</CardTitle>
+            <CardTitle>Audit Records ({data?.total_count ?? data?.total ?? 0})</CardTitle>
             <CardDescription>
               Chronological ledger of security and configuration changes
             </CardDescription>

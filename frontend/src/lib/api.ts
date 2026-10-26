@@ -28,7 +28,7 @@ export * from "@/types";
 
 // Client configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-const DEFAULT_AUTH_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "dev-only-change-me";
+const DEFAULT_AUTH_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "7c4e9f2b1a8d3f6cf1b2c3d4e5f60789";
 
 let currentToken: string = DEFAULT_AUTH_TOKEN;
 

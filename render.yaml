@@ -1,0 +1,32 @@
+services:
+  # ---------------------------------------------------------------------------
+  # SENTRIX Backend Web Service (FastAPI + Uvicorn + ML Detection Pipeline)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: sentrix-backend
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: .
+    buildCommand: pip install -e "backend[dev]"
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: MITIGATION_MODE
+        value: simulation
+      - key: MODEL_PATH
+        value: models/approved_model.joblib
+      - key: DATABASE_URL
+        sync: false
+      - key: API_AUTH_REQUIRED
+        value: "true"
+      - key: API_AUTH_TOKEN
+        sync: false
+      - key: KEEPALIVE_SECRET
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.10.12"
+

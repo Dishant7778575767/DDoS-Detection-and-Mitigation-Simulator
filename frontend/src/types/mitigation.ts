@@ -5,15 +5,20 @@ export interface MitigationItem {
   action_type: string;
   rate_limit_pps: number;
   duration_seconds: number;
-  state: "proposed" | "simulated" | "active" | "cancelled" | "expired";
-  simulation: boolean;
+  status?: "proposed" | "simulated" | "active" | "cancelled" | "expired" | string;
+  state?: "proposed" | "simulated" | "active" | "cancelled" | "expired" | string;
+  mode?: string;
+  simulation?: boolean;
   created_at: string;
   updated_at: string;
+  expires_at?: string | null;
+  cancelled_at?: string | null;
   time_remaining_seconds?: number;
 }
 
 export interface MitigationListResponse {
-  total: number;
+  total_count: number;
+  total?: number;
   limit: number;
   offset: number;
   mitigations: MitigationItem[];

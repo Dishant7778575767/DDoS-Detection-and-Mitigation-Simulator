@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from starlette.middleware.base import RequestResponseEndpoint
 
+from app.api.internal import router as internal_router
 from app.api.v1.alerts import router as alerts_router
 from app.api.v1.audit import router as audit_router
 from app.api.v1.config import router as config_router
@@ -33,10 +34,13 @@ def create_app() -> FastAPI:
     app = FastAPI(title="SENTRIX API", lifespan=lifespan)
     install_error_handlers(app)
 
-    # Enable CORS for Next.js frontend development and testing
+    # Enable CORS for Next.js frontend development and Vercel cloud deployment
+    settings = get_settings()
+    allowed_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=allowed_origins,
+        allow_origin_regex=r"^https://.*\.vercel\.app$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -51,6 +55,10 @@ def create_app() -> FastAPI:
     app.include_router(mitigations_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")
     app.include_router(audit_router, prefix="/api/v1")
+
+    # Register internal keepalive endpoint (/internal/keepalive and /api/v1/keepalive)
+    app.include_router(internal_router, prefix="/internal")
+    app.include_router(internal_router, prefix="/api/v1")
 
     @app.middleware("http")
     async def add_request_id(

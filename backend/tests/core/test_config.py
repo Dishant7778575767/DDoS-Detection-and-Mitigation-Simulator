@@ -28,7 +28,8 @@ def test_defaults_use_simulation_sqlite_and_authentication(
     ("field", "value"),
     [
         ("mitigation_mode", "lab"),
-        ("database_url", "postgresql://localhost/sentrix"),
+        ("database_url", "mysql://localhost/sentrix"),
+        ("database_url", "oracle://localhost/sentrix"),
     ],
 )
 def test_rejects_unsupported_or_unsafe_configuration(
@@ -37,6 +38,22 @@ def test_rejects_unsupported_or_unsafe_configuration(
 ) -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **{field: value})
+
+
+@pytest.mark.parametrize(
+    ("raw_url", "expected_prefix"),
+    [
+        ("sqlite:///./sentrix.db", "sqlite"),
+        ("postgresql://user:pass@localhost:5432/sentrix", "postgresql"),
+        ("postgresql+psycopg2://user:pass@localhost:5432/sentrix", "postgresql+psycopg2"),
+        ("postgres://user:pass@localhost:5432/sentrix", "postgresql"),
+    ],
+)
+def test_accepts_valid_postgresql_and_sqlite_urls(
+    raw_url: str, expected_prefix: str
+) -> None:
+    settings = Settings(_env_file=None, database_url=raw_url)
+    assert settings.database_url.startswith(expected_prefix)
 
 
 def test_authentication_default_requires_a_token_at_runtime() -> None:

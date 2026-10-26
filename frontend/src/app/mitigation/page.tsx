@@ -212,7 +212,7 @@ export default function MitigationPage() {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Mitigation History & Active Lifecycles ({data?.total || 0})</CardTitle>
+            <CardTitle>Mitigation History & Active Lifecycles ({data?.total_count ?? data?.total ?? 0})</CardTitle>
             <CardDescription>
               State transitions: proposed → simulated → cancelled / expired
             </CardDescription>
@@ -255,27 +255,32 @@ export default function MitigationPage() {
                         {item.duration_seconds}s
                       </td>
                       <td className="py-3 px-3">
-                        <Badge
-                          variant={
-                            item.state === "simulated"
-                              ? "simulation"
-                              : item.state === "cancelled"
-                                ? "warning"
-                                : item.state === "expired"
-                                  ? "outline"
-                                  : "info"
-                          }
-                        >
-                          {item.state}
-                        </Badge>
+                        {(() => {
+                          const currentState = item.state || item.status || "unknown";
+                          return (
+                            <Badge
+                              variant={
+                                currentState === "simulated"
+                                  ? "simulation"
+                                  : currentState === "cancelled"
+                                    ? "warning"
+                                    : currentState === "expired"
+                                      ? "outline"
+                                      : "info"
+                              }
+                            >
+                              {currentState}
+                            </Badge>
+                          );
+                        })()}
                       </td>
                       <td className="py-3 px-3">
-                        <span className="text-[11px] text-cyan-400 font-semibold">
-                          SIMULATION
+                        <span className="text-[11px] text-cyan-400 font-semibold uppercase">
+                          {item.mode || "SIMULATION"}
                         </span>
                       </td>
                       <td className="py-3 px-3">
-                        {item.state === "simulated" ? (
+                        {(item.state === "simulated" || item.status === "simulated") ? (
                           <Button
                             variant="outline"
                             size="sm"

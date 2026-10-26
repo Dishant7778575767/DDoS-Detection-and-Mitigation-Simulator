@@ -62,7 +62,7 @@ def upgrade() -> None:
             "traffic_threshold_exceeded",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("0"),
+            server_default=sa.false(),
         ),
         sa.Column("policy_decision", sa.String(64), nullable=False),
         sa.Column(
@@ -140,7 +140,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("version", sa.String(32), nullable=False, unique=True),
         sa.Column(
-            "is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")
+            "is_active", sa.Boolean(), nullable=False, server_default=sa.true()
         ),
         sa.Column("pps_threshold", sa.Float(), nullable=False, server_default="5000.0"),
         sa.Column(

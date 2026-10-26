@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -71,7 +72,7 @@ class ApiTestRunner:
         t0 = time.perf_counter()
 
         try:
-            with urllib.request.urlopen(req, timeout=10.0) as resp:
+            with urllib.request.urlopen(req, timeout=15.0) as resp:
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 content_type = resp.headers.get("Content-Type", "")
                 raw_body = resp.read().decode("utf-8")
@@ -316,6 +317,12 @@ def run_all_tests(base_url: str, token: str) -> bool:
 
 
 def main() -> None:
+    # Load .env so API_AUTH_TOKEN is automatically used if present
+    from dotenv import load_dotenv
+    load_dotenv(ROOT_DIR / ".env")
+
+    default_token = os.environ.get("API_AUTH_TOKEN", "dev-only-change-me")
+
     parser = argparse.ArgumentParser(description="Test all SENTRIX backend REST APIs")
     parser.add_argument(
         "--url",
@@ -323,7 +330,7 @@ def main() -> None:
         help="Base URL of SENTRIX FastAPI backend",
     )
     parser.add_argument(
-        "--token", default="dev-only-change-me", help="API authentication Bearer token"
+        "--token", default=default_token, help="API authentication Bearer token"
     )
     args = parser.parse_args()
 

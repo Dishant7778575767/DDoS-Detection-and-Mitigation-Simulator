@@ -248,12 +248,26 @@ def emergency_disable_mitigations(
     repo = MitigationRepository(session)
     active = repo.get_active_or_simulated()
 
-    cancelled_count = 0
+    cancelled_count = len(active)
     now_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    for act in active:
-        if act.status in ("proposed", "simulated", "applied"):
-            repo.update_status(act.action_id, "cancelled", cancelled_at=now_ts)
-            cancelled_count += 1
+
+    if active:
+        # Perform single batch update instead of sequential loop commits
+        from sqlalchemy import update
+
+        from app.storage.models import MitigationModel
+
+        action_ids = [act.action_id for act in active]
+        session.execute(
+            update(MitigationModel)
+            .where(MitigationModel.action_id.in_(action_ids))
+            .values(
+                status="cancelled",
+                cancelled_at=now_ts,
+                updated_at=now_ts,
+            )
+        )
+        session.commit()
 
     record_audit_event(
         session=session,

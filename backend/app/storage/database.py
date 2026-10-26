@@ -1,3 +1,4 @@
+import ssl
 from collections.abc import Generator
 from functools import lru_cache
 from pathlib import Path
@@ -15,12 +16,39 @@ class Base(DeclarativeBase):
     pass
 
 
-def create_database_engine(database_url: str) -> Engine:
-    url = make_url(database_url)
-    if url.drivername != "sqlite":
-        raise ValueError("Only SQLite database URLs are supported")
+def is_psycopg2_usable() -> bool:
+    try:
+        import psycopg2  # noqa: F401
 
-    return _create_sqlite_engine(database_url, url.database)
+        return True
+    except (ImportError, OSError):
+        return False
+
+
+def create_database_engine(database_url: str) -> Engine:
+    cleaned = database_url.strip()
+    driver_prefix = (
+        "postgresql+psycopg2" if is_psycopg2_usable() else "postgresql+pg8000"
+    )
+
+    if cleaned.startswith("postgres://"):
+        cleaned = f"{driver_prefix}://" + cleaned[len("postgres://") :]
+    elif (
+        cleaned.startswith("postgresql://")
+        and "+psycopg" not in cleaned
+        and "+pg8000" not in cleaned
+    ):
+        cleaned = f"{driver_prefix}://" + cleaned[len("postgresql://") :]
+
+    url = make_url(cleaned)
+    if url.drivername == "sqlite":
+        return _create_sqlite_engine(cleaned, url.database)
+    if url.drivername.startswith("postgresql"):
+        return _create_postgres_engine(cleaned)
+
+    raise ValueError(
+        f"Unsupported database dialect '{url.drivername}'. Only SQLite and PostgreSQL are supported."
+    )
 
 
 @lru_cache(maxsize=8)
@@ -31,6 +59,22 @@ def _create_sqlite_engine(database_url: str, database: str | None) -> Engine:
     return create_engine(
         database_url,
         connect_args={"check_same_thread": False},
+    )
+
+
+@lru_cache(maxsize=8)
+def _create_postgres_engine(database_url: str) -> Engine:
+    connect_args = {}
+    if "pg8000" in database_url:
+        connect_args["ssl_context"] = ssl.create_default_context()
+
+    return create_engine(
+        database_url,
+        connect_args=connect_args,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        pool_recycle=300,
     )
 
 
