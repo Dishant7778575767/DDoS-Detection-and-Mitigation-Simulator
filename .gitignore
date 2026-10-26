@@ -3,11 +3,10 @@
 .env.*
 !.env.example
 
-# Local datasets and captures; keep data/README.md tracked
+# Local datasets and captures; keep data/README.md and test fixtures tracked
 data/raw/
 data/processed/
 data/lab/
-data/fixtures/
 *.pcap
 *.pcapng
 
