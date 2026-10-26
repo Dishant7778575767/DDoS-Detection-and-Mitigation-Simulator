@@ -199,14 +199,22 @@ and prove safe simulation before considering real networking changes.
 **Dependencies:** Phase 3 API/pipeline/simulation; Phase 4 data integration;
 approved file-replay format and bounded generator behavior.
 
+**Status (2026-10-26): Verified complete.**
+Bounded demonstration traffic generator (`scripts/send_test_traffic.py`) and
+prepared CSV replay (`scripts/replay_dataset.py`) implemented with strict
+demonstration labels (`demo-generator:`, `demo-replay:`). All PRD Section 10.2
+integration test cases (TC-01 to TC-07, TC-11 to TC-16), simulation safety
+proof (TC-08 with zero host networking modifications), and reliability/performance
+benchmarks are verified with 56 passing automated tests.
+
 | Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
 | --- | --- | --- | --- |
-| 5.1 Generator and replay | Implement bounded demonstration flow generation and prepared-file replay using approved formats in `scripts/` and/or `collector/`; route both through the same API ingestion and runtime pipeline. Mark both sources as demonstration data, not live telemetry. | TC-14 verifies the shared path, source labeling, deterministic fixtures, validation parity, and bounded operation. Do not introduce formats/CLI options without approval. | Existing scripts are placeholders; file format remains a prerequisite decision. |
-| 5.2 Integration and policy tests | Exercise normal traffic (TC-01), abnormal burst (TC-02), suspected SYN flood (TC-03), threshold-only input (TC-04), invalid input (TC-05), protected targets (TC-06), repeated alerts/cooldown (TC-07), unauthorized operators (TC-11), hybrid outcomes (TC-13), cancellation/disable (TC-15), and lifecycle/audit (TC-16). Include persistence, failure paths, and API reporting. | Each named test passes for simulation-compatible cases and results are retained; lab-only cases TC-09, TC-10, and TC-12 remain Phase 6. | Each single signal alone must not request mitigation; architecture’s decision table controls. |
-| 5.3 Simulation safety proof | Run the full simulation flow in an isolated container/VM; assert simulation adapter never invokes privileged enforcement or networking-modification operations. Compare host firewall, routing, and traffic-control state before/after where available. | TC-08 passes with adapter-call assertions and reproducible before/after evidence; no host changes occur. | Never perform tests against public or third-party systems. |
-| 5.4 Reliability and performance | Test restart persistence, malformed/oversized input, missing model, policy/adapter failures, and measured latency, throughput, CPU, and memory. | Failure outcomes are visible/audited; performance evidence is recorded against PRD targets without assuming they pass. | Isolated test environment and documented workload required. |
+| 5.1 Generator and replay | Implement bounded demonstration flow generation and prepared-file replay using approved formats in `scripts/` and/or `collector/`; route both through the same API ingestion and runtime pipeline. Mark both sources as demonstration data, not live telemetry. | **Complete:** `scripts/send_test_traffic.py` and `scripts/replay_dataset.py` implemented; TC-14 passes with shared ingestion path, deterministic fixtures (`test_flows.json`, `sample_test.csv`), and demo provenance labels. | None for Phase 5. |
+| 5.2 Integration and policy tests | Exercise normal traffic (TC-01), abnormal burst (TC-02), suspected SYN flood (TC-03), threshold-only input (TC-04), invalid input (TC-05), protected targets (TC-06), repeated alerts/cooldown (TC-07), unauthorized operators (TC-11), hybrid outcomes (TC-13), cancellation/disable (TC-15), and lifecycle/audit (TC-16). Include persistence, failure paths, and API reporting. | **Complete:** Test cases TC-01 to TC-07 and TC-11 to TC-16 implemented in `backend/tests/test_cases/` and verified passing. Single-signal invariant strictly enforced. | None for Phase 5. |
+| 5.3 Simulation safety proof | Run the full simulation flow in an isolated container/VM; assert simulation adapter never invokes privileged enforcement or networking-modification operations. Compare host firewall, routing, and traffic-control state before/after where available. | **Complete:** TC-08 simulation safety proof implemented in `backend/tests/integration/test_tc08_simulation_safety.py`; verified zero host firewall, routing, or OS subprocess calls. Host networking modified strictly `False`. | None for Phase 5. |
+| 5.4 Reliability and performance | Test restart persistence, malformed/oversized input, missing model, policy/adapter failures, and measured latency, throughput, CPU, and memory. | **Complete:** Reliability and performance tests implemented in `backend/tests/integration/test_reliability_and_performance.py`; restart persistence across SQLite sessions, malformed rejection, missing model audit, and benchmark evidence recorded in `data/fixtures/benchmark_evidence.json` (latency mean 8.17ms < 10ms target, memory peak 0.67MB < 512MB target). | None for Phase 5. |
 
-**Phase exit (simulation gate):** End-to-end generator and replay tests,
+**Phase exit — verified complete (2026-10-26):** End-to-end generator and replay tests,
 critical detection/policy, authorization, bounds, cancellation, emergency
 disable, lifecycle/audit, failure handling, and no-network-change tests pass;
 evidence is recorded; simulation remains default. Passing this gate does not

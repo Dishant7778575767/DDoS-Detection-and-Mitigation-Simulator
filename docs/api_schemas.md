@@ -36,24 +36,26 @@ Standard Error Codes:
 
 ---
 
-## 2. API Endpoint Directory
+## 2. API Endpoint Directory (All 16 APIs)
 
-| Method | Endpoint | Description | Auth Required |
-| :--- | :--- | :--- | :---: |
-| `GET` | `/api/v1/health` | Service health check | Optional/Configurable |
-| `GET` | `/api/v1/models` | List available models & active approved model | Yes |
-| `GET` | `/api/v1/models/metrics` | Model evaluation benchmarks & dataset metrics | Yes |
-| `POST` | `/api/v1/traffic/flows` | Ingest flow observations through pipeline | Yes |
-| `GET` | `/api/v1/traffic/summary` | Live sliding-window traffic rates and statistics | Yes |
-| `POST` | `/api/v1/detection/analyze` | Direct ML inference & hybrid policy check | Yes |
-| `GET` | `/api/v1/alerts` | Paginated & filtered alert event log | Yes |
-| `GET` | `/api/v1/mitigations` | Paginated & filtered mitigation actions | Yes |
-| `POST` | `/api/v1/mitigations/simulate` | Evaluate safety gate & record simulation rule | Yes |
-| `POST` | `/api/v1/mitigations/{id}/cancel` | Cancel an active/simulated mitigation action | Yes |
-| `POST` | `/api/v1/mitigations/disable` | Emergency disable switch (halts all actions) | Yes |
-| `GET` | `/api/v1/audit` | Query immutable audit log (JSON / CSV) | Yes |
-| `GET` | `/api/v1/config/thresholds` | Retrieve active traffic thresholds | Yes |
-| `PATCH` | `/api/v1/config/thresholds` | Update operational thresholds | Yes |
+| # | Method | Endpoint | Description | Auth Required |
+| :-: | :--- | :--- | :--- | :---: |
+| 1 | `GET` | `/api/v1/health` | Service health check & simulation mode confirmation | Optional/Configurable |
+| 2 | `GET` | `/api/v1/models` | List candidate models and active approved model | Yes |
+| 3 | `GET` | `/api/v1/models/metrics` | Model evaluation benchmarks, confusion matrices & metrics | Yes |
+| 4 | `POST` | `/api/v1/traffic/flows` | Ingest flow observations through full runtime pipeline | Yes |
+| 5 | `GET` | `/api/v1/traffic/summary` | Live sliding-window traffic rates, PPS/BPS, burst metrics | Yes |
+| 6 | `POST` | `/api/v1/detection/analyze` | Direct ad-hoc ML inference & hybrid policy evaluation | Yes |
+| 7 | `GET` | `/api/v1/alerts` | Paginated and filtered alert event log | Yes |
+| 8 | `GET` | `/api/v1/mitigations` | Paginated and filtered mitigation lifecycle actions | Yes |
+| 9 | `POST` | `/api/v1/mitigations/simulate` | Evaluate safety gate & execute simulation rate limit | Yes |
+| 10 | `POST` | `/api/v1/mitigations/{action_id}/cancel` | Request cancellation of an active or simulated mitigation | Yes |
+| 11 | `POST` | `/api/v1/mitigations/disable` | Emergency disable switch (halts all active mitigations) | Yes |
+| 12 | `POST` | `/api/v1/mitigations/disable?enable=true` | Clear emergency disable switch & restore safety gate | Yes |
+| 13 | `GET` | `/api/v1/config/thresholds` | Retrieve active versioned traffic thresholds | Yes |
+| 14 | `PATCH` | `/api/v1/config/thresholds` | Partially update operational threshold parameters | Yes |
+| 15 | `PUT` | `/api/v1/config/thresholds` | Idempotently update or replace threshold parameters | Yes |
+| 16 | `GET` | `/api/v1/audit` | Query immutable audit log stream (`format=json` or `format=csv`) | Yes |
 
 ---
 
@@ -117,6 +119,9 @@ Standard Error Codes:
 
 ### 3.3 Traffic Ingestion & Summary
 * **`POST /api/v1/traffic/flows`**
+  * **Demonstration Data Provenance**: In accordance with PRD Section 10.2 / TC-14, demonstration flows MUST carry explicit provenance prefixes:
+    * `demo-generator:<scenario>:<id>` for synthetically generated flows.
+    * `demo-replay:<filename>:<row_id>` for CSV-replayed dataset flows.
   * **Request Body (201 Created)**:
     ```json
     {
@@ -255,12 +260,22 @@ Standard Error Codes:
     ```
 
 * **`POST /api/v1/mitigations/disable`**
-  * **Response (200 OK)**:
+  * **Query Parameters**:
+    * `enable` (*optional, boolean, default: `false`*): When `true`, deactivates the emergency disable switch and allows new mitigation simulations to resume.
+  * **Response (200 OK — Deactivating)**:
     ```json
     {
       "emergency_disabled": true,
       "cancelled_actions_count": 3,
       "status": "All mitigation actions have been halted."
+    }
+    ```
+  * **Response (200 OK — Re-enabling)**:
+    ```json
+    {
+      "emergency_disabled": false,
+      "cancelled_actions_count": 0,
+      "status": "Emergency disable cleared. Mitigation requests allowed."
     }
     ```
 
@@ -286,9 +301,65 @@ Standard Error Codes:
   * **Request Body**:
     ```json
     {
-      "pps_threshold": 8000.0
+      "pps_threshold": 8000.0,
+      "rf_probability_threshold": 0.80
+    }
+    ```
+  * **Response (200 OK)**:
+    ```json
+    {
+      "version": "v1.0.1",
+      "is_active": true,
+      "pps_threshold": 8000.0,
+      "bps_threshold": 10000000.0,
+      "syn_pps_threshold": 500.0,
+      "syn_ack_ratio_threshold": 5.0,
+      "rf_probability_threshold": 0.80,
+      "iforest_score_threshold": 0.2664,
+      "updated_by": "operator_api",
+      "created_at": "2026-10-26T12:00:00Z"
     }
     ```
 
-* **`GET /api/v1/audit?format=json&limit=50&offset=0`**
-  * Returns list of structured audit events with `event_id`, `event_type`, `action`, `actor`, `details`, and `timestamp`. Supports `format=csv`.
+* **`PUT /api/v1/config/thresholds`**
+  * Idempotent endpoint for updating or replacing active threshold configuration parameters. Accepts the same payload schema as `PATCH`.
+  * **Response (200 OK)**: Returns the updated `ThresholdConfigResponse` object.
+
+* **`GET /api/v1/audit` (JSON & CSV)**
+  * **Query Parameters**:
+    * `format`: `"json"` (default) or `"csv"`.
+    * `event_type` (*optional*): Filter by event type (`alert_created`, `mitigation_simulated`, `mitigation_cancelled`, `emergency_disable_activated`, `emergency_disable_cleared`, `threshold_config_updated`, `pipeline_failure`).
+    * `limit`: Integer (`1` to `500`, default `50`).
+    * `offset`: Integer (`ge=0`, default `0`).
+  * **Response (200 OK — `format=json`)**:
+    ```json
+    {
+      "total_count": 42,
+      "limit": 50,
+      "offset": 0,
+      "events": [
+        {
+          "event_id": "aud_7c2b04f1",
+          "event_type": "mitigation_simulated",
+          "action": "simulate_rate_limit",
+          "actor": "operator_api",
+          "details": {
+            "action_id": "act_827b10fa",
+            "target_ip": "10.0.0.99",
+            "rate_limit_pps": 1000,
+            "duration_seconds": 60,
+            "mode": "simulation",
+            "host_networking_modified": false
+          },
+          "timestamp": "2026-10-26T12:00:00Z"
+        }
+      ]
+    }
+    ```
+  * **Response (200 OK — `format=csv`)**:
+    * `Content-Type`: `text/csv`
+    * Content Body:
+      ```csv
+      event_id,event_type,action,actor,timestamp,details
+      aud_7c2b04f1,mitigation_simulated,simulate_rate_limit,operator_api,2026-10-26T12:00:00Z,"{""action_id"":""act_827b10fa"",""target_ip"":""10.0.0.99""}"
+      ```

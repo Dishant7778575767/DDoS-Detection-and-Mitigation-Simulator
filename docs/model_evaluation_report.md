@@ -4,8 +4,8 @@
 
 In accordance with Phase 2 of the SENTRIX Implementation Plan and PRD Requirements FR-03, FR-04, and FR-06, both candidate machine learning models (**Random Forest Classifier** and **Isolation Forest**) were reproducibly trained, calibrated, and evaluated on a held-out test split of the CIC-DDoS2019 dataset using feature schema version `1.0.0`.
 
-* **Selected and Approved Candidate**: **Random Forest Classifier (v1.0.0)** is approved for the Phase 2 baseline. It achieved an F1-score of **99.97%**, precision of **99.98%**, recall of **99.96%**, false-positive rate of **1.73%**, and a p95 inference latency of **4.45 ms/observation** (well within the `< 100 ms` target).
-* **Non-Selected Candidate**: **Isolation Forest (v1.0.0)** was evaluated as an unsupervised anomaly detection candidate. Despite tuning the decision threshold on validation data to maximize F1, it exhibited a **54.76% false-positive rate** on benign traffic. In compliance with safety gates, it is **not approved** for runtime rate-limiting or mitigation.
+* **Selected and Approved Candidate**: **Random Forest Classifier (v1.0.0)** is approved for the Phase 2 baseline. It achieved an F1-score of **99.99%**, precision of **99.99%**, recall of **99.98%**, false-positive rate of **0.58%** (only 2 benign flows misclassified out of 347), and a p95 inference latency of **6.56 ms/observation** (well within the `< 100 ms` target).
+* **Non-Selected Candidate**: **Isolation Forest (v1.0.0)** was evaluated as an unsupervised anomaly detection candidate. Despite tuning the decision threshold on validation data to maximize F1 (calibrated threshold: `0.2664`), it exhibited a **53.31% false-positive rate** on benign traffic (185 false alarms out of 347). In compliance with safety gates, it is **not approved** for runtime rate-limiting or mitigation.
 
 ---
 
@@ -48,33 +48,32 @@ Both candidates and the runtime inference engine adhere strictly to feature sche
 
 ## 4. Head-to-Head Held-Out Test Evaluation Results
 
-Measurements evaluated on the held-out test split (40,000 rows: 347 Benign, 39,653 DDoS):
+Measurements evaluated on the held-out test split (40,000 rows: 347 Benign, 39,653 DDoS) loaded directly from `models/rf-1.0.0/metrics.json` and `models/iforest-1.0.0/metrics.json`:
 
 | Metric | Proposed Target | Random Forest (Supervised) | Isolation Forest (Unsupervised) | Compliance Assessment |
 | :--- | :---: | :---: | :---: | :--- |
-| **Accuracy** | — | **99.95%** | 99.43% | Random Forest superior |
-| **Precision** | ≥ 90.0% | **99.98%** | 99.52% | Both pass |
-| **Recall** | ≥ 90.0% | **99.96%** | 99.90% | Both pass |
-| **F1-Score** | ≥ 90.0% | **99.97%** | 99.71% | Both pass |
-| **False Positive Rate (FPR)** | ≤ 5.0% | **1.73%** (6 / 347) | **54.76%** (190 / 347) | **RF passes; IF fails gate** |
-| **ROC-AUC** | — | **0.99996** | 0.95789 | Random Forest near-optimal |
-| **p95 Latency** | < 100 ms | **4.45 ms** | **5.00 ms** | Both well within latency budget |
-| **Eval Time (40k rows)** | — | 0.118 s | 0.067 s | High-throughput capability |
+| **Accuracy** | — | **99.98%** (`0.999775`) | 99.43% (`0.994300`) | Random Forest superior |
+| **Precision** | ≥ 90.0% | **99.995%** (`0.999950`) | 99.54% (`0.995351`) | Both pass |
+| **Recall** | ≥ 90.0% | **99.982%** (`0.999823`) | 99.89% (`0.998916`) | Both pass |
+| **F1-Score** | ≥ 90.0% | **99.989%** (`0.999887`) | 99.71% (`0.997130`) | Both pass |
+| **False Positive Rate (FPR)** | ≤ 5.0% | **0.58%** (2 / 347) | **53.31%** (185 / 347) | **RF passes; IF fails gate** |
+| **p95 Latency** | < 100 ms | **6.56 ms** | **4.81 ms** | Both well within latency budget |
+| **Training Time** | — | 2.81 s | 0.09 s | Fast convergence |
 
-### Confusion Matrices
+### Confusion Matrices (from `metrics.json`)
 
-#### Random Forest Classifier:
+#### Random Forest Classifier (Approved):
 ```
                 Predicted Benign (0)   Predicted Attack (1)
-Actual Benign            341                    6       (FPR: 1.73%)
-Actual Attack             14                39,639      (FNR: 0.04%)
+Actual Benign            345                    2       (FPR: 0.58%)
+Actual Attack              7                39,646      (FNR: 0.018%)
 ```
 
-#### Isolation Forest:
+#### Isolation Forest (Experimental / Rejected):
 ```
                 Predicted Benign (0)   Predicted Attack (1)
-Actual Benign            157                  190       (FPR: 54.76%)
-Actual Attack             40                39,613      (FNR: 0.10%)
+Actual Benign            162                  185       (FPR: 53.31%)
+Actual Attack             43                39,610      (FNR: 0.11%)
 ```
 
 ---
@@ -106,3 +105,18 @@ Actual Attack             40                39,613      (FNR: 0.10%)
 * **Versioned Model Directory**: `models/rf-1.0.0/`
 * **Feature Schema Compatibility**: Version `1.0.0` confirmed with `backend/app/features/definitions.py`.
 * **Decision**: **Random Forest is approved** as the single Phase 2 baseline detection candidate. Isolation Forest is retained as an experimental anomaly comparator only.
+
+---
+
+## 8. Phase 5 Runtime Inference & Reliability Verification
+
+During Phase 5 integration testing, the approved Random Forest artifact was benchmarked under live runtime pipeline conditions within Python 3.14 on Windows. Performance evidence is recorded in `data/fixtures/benchmark_evidence.json`:
+
+* **Inference Latency (N=100)**:
+  * **Mean**: `8.17 ms` (Target: `< 10.0 ms` — **MET**)
+  * **P50**: `7.95 ms`
+  * **P95**: `12.45 ms`
+  * **P99**: `14.82 ms`
+* **Runtime Memory Overhead**: `0.67 MB` peak allocation growth (Target: `< 512.0 MB` — **MET**).
+* **Pipeline Throughput**: `10.0 flows/sec` sustained real-time transaction ingestion with full database persistence and audit logging.
+* **Failure Auditing**: In the event of a missing or corrupt model artifact, the runtime pipeline gracefully catches the failure, records an immutable audit event (`pipeline_failure: inference_failed`), and prevents unhandled server crashes.
