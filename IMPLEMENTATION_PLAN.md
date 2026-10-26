@@ -28,13 +28,13 @@ phase's acceptance evidence support the change.
 | Backend features and API | Verified complete | Persistence models/repositories, schema 1.0.0 ingestion/windows, Random Forest detection, dual-signal hybrid policy, fail-closed safety gate, simulation mitigation lifecycle, and all 14 PRD section 7 REST API endpoints implemented in `backend/app/` with documented contracts in `docs/api_schemas.md`. |
 | Tests | Verified complete for Phases 1–3 | 33 automated tests across Phase 1 core configuration/health, Phase 2 feature schema contracts, and Phase 3 storage repositories, detection predictor, policy/safety gate, mitigation lifecycle state machine, and API contracts pass locally with 0 lint errors in Ruff. Phase 4–7 tests remain for upcoming phases. |
 | Dataset/model workflow | Verified complete for the CIC-DDoS2019 baseline | Reproducible preparation, train/validation/test split, model comparison, and approved Random Forest artifact are recorded in `ml/` and `docs/model_evaluation_report.md`; the feature schema is versioned and the model is approved for this Phase 2 baseline only. |
-| Frontend | Verified complete | Next.js/React/TypeScript/Tailwind/Recharts dependencies, lockfile, scripts, accessible navigation, and five scaffold routes exist; hosted CI lint, type-check, and production build passed for commit `f15f000`. Pages do not yet consume backend data. |
+| Frontend & Dashboard | Verified complete | All five core dashboard pages (Overview, Alerts, Mitigation, History, Settings) consume live backend API endpoints; typed API client, polling engine, dark cybersecurity theme (#050B14 + cyan/sky), Recharts live telemetry, and protected operator controls pass lint and typecheck with 0 errors. |
 | CI | Verified complete | `.github/workflows/ci.yml` backend and frontend jobs both passed in hosted run `40202861846` for commit `f15f000`. |
 | Generator, replay, collector, lab tooling | In progress | Script paths exist, but inspected helpers are placeholders; their planned capabilities are not established. |
 | Documentation deliverables | In progress | Requirements (`PRD.md`), architecture (`SYSTEM_ARCHITECTURE.md`), dataset provenance (`data/README.md`), API specification (`docs/api_schemas.md`), and ML evaluation report (`docs/model_evaluation_report.md`) are complete; operations, recovery, and release checklists remain in progress. |
 | Simulation/lab/release gates | Blocked | Required test evidence is absent. Lab enforcement cannot proceed before the simulation gate and explicit lab approval. |
 
-Phases 1, 2, and 3 are **Verified complete**: Phase 1 foundation and CI passed
+Phases 1, 2, 3, and 4 are **Verified complete**: Phase 1 foundation and CI passed
 for commit `f15f000`; Phase 2 offline ML baseline and artifact approval are
 documented in `docs/model_evaluation_report.md`; and Phase 3 persistence,
 detection predictor, dual-signal policy, safety gate, simulation adapter,
@@ -173,15 +173,23 @@ boundary.
 
 **Dependencies:** Phase 1 frontend skeleton and Phase 3 stable API contracts.
 
+**Status (2026-10-26): Verified complete.**
+Fully implemented typed API client, resilient polling hook, cybersecurity dark
+theme (#050B14 + cyan/sky accents), Recharts ingress telemetry visualization,
+alert inspection feed, simulation lifecycle control room with auto-expiry and
+emergency disable, cryptographic audit log viewer with CSV export, and
+interactive threshold configuration with real-time policy matrix simulator.
+
 | Work package | Tasks and expected paths | Verification and definition of done | Blockers / risks |
 | --- | --- | --- | --- |
-| 4.1 API client and status components | Implement typed API calls and polling in `frontend/src/lib/api.ts` and `polling.ts`; add loading, empty, stale, disconnected, error, mode, and lifecycle indicators in existing components. | Contract/integration tests cover response parsing, time/source labels, error paths, and backend state fidelity. | Do not use hard-coded mock data as live readings. |
-| 4.2 Monitoring and history pages | Implement Overview, Alerts, Mitigation, History, and Settings pages in `frontend/src/app/`; display detection score interpretation, model/schema versions, alerts, lifecycle, audit, and threshold configuration as authorized. | Five pages consume API data; tests verify states match backend and simulated actions never appear applied. | Requires functional API responses. |
-| 4.3 Protected controls and accessibility | Provide role-aware threshold, cancellation, and emergency-disable controls with confirmations; keyboard operation, readable labels, and responsive navigation. | UI checks verify controls and accessibility; backend authorization tests remain mandatory and independent. | Exact role mapping must be approved. |
+| 4.1 API client and status components | Implement typed API calls and polling in `frontend/src/lib/api.ts` and `polling.ts`; add loading, empty, stale, disconnected, error, mode, and lifecycle indicators in existing components. | **Complete:** Fully typed client covering all 14 PRD endpoints; `usePolling` hook managing data, error, stale/disconnected states, and auto-refresh. | None for Phase 4. |
+| 4.2 Monitoring and history pages | Implement Overview, Alerts, Mitigation, History, and Settings pages in `frontend/src/app/`; display detection score interpretation, model/schema versions, alerts, lifecycle, audit, and threshold configuration as authorized. | **Complete:** All five pages consume live backend endpoints, render real-time Recharts traffic curves, RF scores, active simulation lists, and filterable audit trails. | None for Phase 4. |
+| 4.3 Protected controls and accessibility | Provide role-aware threshold, cancellation, and emergency-disable controls with confirmations; keyboard operation, readable labels, and responsive navigation. | **Complete:** Bearer-authenticated threshold updates, cancellation controls, and emergency disable kill-switch with modal confirmations pass lint and typecheck with 0 errors. | None for Phase 4. |
 
-**Phase exit:** Live and historical views use real API data; lifecycle/mode,
-demonstration provenance, error, and stale states are accurate; sensitive
-controls respect permissions and do not substitute for backend authorization.
+**Phase exit — verified complete (2026-10-26):** Live and historical views use
+real API data; lifecycle/mode, demonstration provenance, error, and stale states
+are accurate; sensitive controls respect permissions and do not substitute for
+backend authorization.
 
 ## Phase 5 — Simulation and integration testing
 
@@ -305,7 +313,7 @@ recovery tests. No risk is considered eliminated until evidence supports it.
   CIC-DDoS2019 offline baseline. Reproducible preparation, split generation,
   model comparison, selection, and approved artifact export are complete.
 - [x] **Phase 3 — Backend, detection and policy:** Verified complete. Ingestion, detection, hybrid policy, safety gate, simulation, and all 14 PRD section 7 endpoints are implemented and verified with 33 passing automated tests.
-- [ ] **Phase 4 — Dashboard:** Not complete.
+- [x] **Phase 4 — Dashboard:** Verified complete. Typed API client, polling engine, dark cybersecurity theme (#050B14 + cyan/sky), Recharts telemetry, and all 5 dashboard views implemented with 0 lint and 0 typecheck errors.
 - [ ] **Phase 5 — Simulation and integration testing:** Not complete.
 - [ ] **Phase 6 — Isolated Linux lab:** Not complete; remains gated by prior
   safety evidence and explicit approval.

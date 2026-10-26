@@ -48,11 +48,23 @@ def evaluate_model(
         scores = model.decision_function(X_test)
         preds = (scores < threshold).astype(int)
         # Use negative score as proxy ranking score for ROC-AUC
-        auc = float(roc_auc_score(y_test, -scores)) if len(np.unique(y_test)) > 1 else np.nan
+        auc = (
+            float(roc_auc_score(y_test, -scores))
+            if len(np.unique(y_test)) > 1
+            else np.nan
+        )
     else:
         preds = model.predict(X_test)
-        probs = model.predict_proba(X_test)[:, 1] if hasattr(model, "predict_proba") else None
-        auc = float(roc_auc_score(y_test, probs)) if probs is not None and len(np.unique(y_test)) > 1 else np.nan
+        probs = (
+            model.predict_proba(X_test)[:, 1]
+            if hasattr(model, "predict_proba")
+            else None
+        )
+        auc = (
+            float(roc_auc_score(y_test, probs))
+            if probs is not None and len(np.unique(y_test)) > 1
+            else np.nan
+        )
 
     eval_time = time.time() - t0
     cm = confusion_matrix(y_test, preds)
@@ -91,7 +103,9 @@ def evaluate_model(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate candidate models on held-out test data")
+    parser = argparse.ArgumentParser(
+        description="Evaluate candidate models on held-out test data"
+    )
     parser.add_argument("--config", type=Path, default=Path("ml/configs/training.yaml"))
     parser.add_argument("--data-dir", type=Path, default=None)
     args = parser.parse_args()
@@ -122,7 +136,9 @@ def main() -> None:
     if (rf_dir / "model.joblib").exists():
         print("Evaluating Random Forest candidate...")
         rf_model = joblib.load(rf_dir / "model.joblib")
-        results["candidates"]["RandomForest"] = evaluate_model(rf_model, X_test, y_test, is_iforest=False)
+        results["candidates"]["RandomForest"] = evaluate_model(
+            rf_model, X_test, y_test, is_iforest=False
+        )
 
     # 2. Evaluate Isolation Forest
     if_dir = Path(paths_cfg.get("iforest_model_dir", "models/iforest-1.0.0"))

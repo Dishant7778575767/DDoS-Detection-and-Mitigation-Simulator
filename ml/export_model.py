@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -16,13 +15,21 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.features.definitions import FEATURE_NAMES, FEATURE_SCHEMA_VERSION, get_feature_schema
+from app.features.definitions import (
+    FEATURE_NAMES,
+    FEATURE_SCHEMA_VERSION,
+    get_feature_schema,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export approved model artifact")
-    parser.add_argument("--source-model", type=Path, default=Path("models/rf-1.0.0/model.joblib"))
-    parser.add_argument("--approved-path", type=Path, default=Path("models/approved_model.joblib"))
+    parser.add_argument(
+        "--source-model", type=Path, default=Path("models/rf-1.0.0/model.joblib")
+    )
+    parser.add_argument(
+        "--approved-path", type=Path, default=Path("models/approved_model.joblib")
+    )
     parser.add_argument("--target-dir", type=Path, default=Path("models/rf-1.0.0"))
     args = parser.parse_args()
 
@@ -33,11 +40,10 @@ def main() -> None:
     model = joblib.load(args.source_model)
 
     # Verify model compatibility with schema
-    if hasattr(model, "n_features_in_"):
-        if model.n_features_in_ != len(FEATURE_NAMES):
-            raise ValueError(
-                f"Model feature count ({model.n_features_in_}) does not match schema ({len(FEATURE_NAMES)})!"
-            )
+    if hasattr(model, "n_features_in_") and model.n_features_in_ != len(FEATURE_NAMES):
+        raise ValueError(
+            f"Model feature count ({model.n_features_in_}) does not match schema ({len(FEATURE_NAMES)})!"
+        )
 
     # 1. Export to models/approved_model.joblib
     args.approved_path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,7 +55,9 @@ def main() -> None:
     schema_data["target"] = "binary_classification"
     schema_data["positive_label"] = 1
     schema_data["negative_label"] = 0
-    schema_data["score_meaning"] = "Random Forest probability; not a calibrated guarantee for production use."
+    schema_data["score_meaning"] = (
+        "Random Forest probability; not a calibrated guarantee for production use."
+    )
 
     schema_file = args.target_dir / "feature_schema.json"
     schema_file.write_text(json.dumps(schema_data, indent=2), encoding="utf-8")

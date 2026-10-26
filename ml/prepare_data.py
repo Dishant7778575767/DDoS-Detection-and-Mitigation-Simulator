@@ -12,11 +12,9 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import List
 
 import numpy as np
 import pandas as pd
-
 
 EXCLUDED_COLUMNS = {
     "unnamed",
@@ -50,15 +48,15 @@ def parse_label(value) -> int:
     return 1
 
 
-def discover_csv_files(root: Path) -> List[Path]:
+def discover_csv_files(root: Path) -> list[Path]:
     files = sorted(root.rglob("*.csv"))
     if not files:
         raise FileNotFoundError(f"No CSV files found under {root}")
     return files
 
 
-def infer_feature_columns(sample: pd.DataFrame) -> List[str]:
-    columns: List[str] = []
+def infer_feature_columns(sample: pd.DataFrame) -> list[str]:
+    columns: list[str] = []
     for name in sample.columns:
         key = normalize_column_name(name)
         if key in EXCLUDED_COLUMNS or key.startswith("unnamed"):
@@ -75,7 +73,7 @@ def infer_feature_columns(sample: pd.DataFrame) -> List[str]:
 
 def process_csv(
     data_file: Path,
-    feature_columns: List[str],
+    feature_columns: list[str],
     output_path: Path,
     limit: int | None = None,
     chunksize: int = 250_000,
@@ -119,7 +117,9 @@ def process_csv(
     return total_rows
 
 
-def split_dataset(processed_csv: Path, output_dir: Path, seed: int = 42, test_size: float = 0.20):
+def split_dataset(
+    processed_csv: Path, output_dir: Path, seed: int = 42, test_size: float = 0.20
+):
     output_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_csv(processed_csv)
     df = df.replace([np.inf, -np.inf], np.nan).dropna().copy()
@@ -161,18 +161,25 @@ def split_dataset(processed_csv: Path, output_dir: Path, seed: int = 42, test_si
         "positive_label": 1,
         "negative_label": 0,
         "feature_columns": list(X.columns),
-        "train_rows": int(len(train_df)),
-        "val_rows": int(len(val_df)),
-        "test_rows": int(len(test_df)),
+        "train_rows": len(train_df),
+        "val_rows": len(val_df),
+        "test_rows": len(test_df),
     }
-    (output_dir / "manifest.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    (output_dir / "manifest.json").write_text(
+        json.dumps(metadata, indent=2), encoding="utf-8"
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare CIC-DDoS2019 data")
     parser.add_argument("--data-root", type=Path, default=Path("data/raw/CIC-DDoS2019"))
     parser.add_argument("--output-dir", type=Path, default=Path("data/processed"))
-    parser.add_argument("--limit", type=int, default=200_000, help="Rows to process per run; 0 means full processing.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=200_000,
+        help="Rows to process per run; 0 means full processing.",
+    )
     parser.add_argument("--chunksize", type=int, default=250_000)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
@@ -188,13 +195,21 @@ def main() -> None:
 
     total_rows = 0
     for path in csv_files:
-        rows = process_csv(path, feature_columns, combined_path, limit=None if args.limit == 0 else args.limit - total_rows, chunksize=args.chunksize)
+        rows = process_csv(
+            path,
+            feature_columns,
+            combined_path,
+            limit=None if args.limit == 0 else args.limit - total_rows,
+            chunksize=args.chunksize,
+        )
         total_rows += rows
         if args.limit and total_rows >= args.limit:
             break
 
     if not combined_path.exists() or combined_path.stat().st_size == 0:
-        raise FileNotFoundError("No data rows were prepared. Check the dataset files or the --limit argument.")
+        raise FileNotFoundError(
+            "No data rows were prepared. Check the dataset files or the --limit argument."
+        )
 
     split_dataset(combined_path, args.output_dir, seed=args.seed)
     print(f"Prepared {total_rows} rows using features: {len(feature_columns)}")

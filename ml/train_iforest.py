@@ -37,7 +37,9 @@ def load_config(config_path: Path) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train Isolation Forest anomaly detector")
+    parser = argparse.ArgumentParser(
+        description="Train Isolation Forest anomaly detector"
+    )
     parser.add_argument("--config", type=Path, default=Path("ml/configs/training.yaml"))
     parser.add_argument("--data-dir", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, default=None)
@@ -48,7 +50,9 @@ def main() -> None:
     if_cfg = config.get("hyperparameters", {}).get("isolation_forest", {})
 
     data_dir = args.data_dir or Path(paths_cfg.get("data_dir", "data/processed"))
-    output_dir = args.output_dir or Path(paths_cfg.get("iforest_model_dir", "models/iforest-1.0.0"))
+    output_dir = args.output_dir or Path(
+        paths_cfg.get("iforest_model_dir", "models/iforest-1.0.0")
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading data from {data_dir}...")
@@ -96,11 +100,13 @@ def main() -> None:
             best_f1 = f1
             best_thresh = th
 
-    print(f"Calibrated validation decision threshold: {best_thresh:.4f} (Validation F1: {best_f1:.4f})")
+    print(
+        f"Calibrated validation decision threshold: {best_thresh:.4f} (Validation F1: {best_f1:.4f})"
+    )
 
     val_preds = (val_scores < best_thresh).astype(int)
     cm = confusion_matrix(y_val, val_preds)
-    tn, fp, fn, tp = cm.ravel()
+    tn, fp, _fn, _tp = cm.ravel()
     fpr = float(fp / (fp + tn)) if (fp + tn) > 0 else 0.0
 
     # Latency measurement over 500 validation observations
@@ -130,7 +136,9 @@ def main() -> None:
 
     # Save artifacts
     joblib.dump(iforest, output_dir / "model.joblib")
-    (output_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    (output_dir / "metrics.json").write_text(
+        json.dumps(metrics, indent=2), encoding="utf-8"
+    )
 
     feature_schema = {
         "schema_version": FEATURE_SCHEMA_VERSION,
@@ -140,7 +148,9 @@ def main() -> None:
         "calibrated_threshold": float(best_thresh),
         "score_meaning": "Anomaly decision score; not a calibrated probability.",
     }
-    (output_dir / "feature_schema.json").write_text(json.dumps(feature_schema, indent=2), encoding="utf-8")
+    (output_dir / "feature_schema.json").write_text(
+        json.dumps(feature_schema, indent=2), encoding="utf-8"
+    )
 
     print(f"Saved Isolation Forest artifacts to {output_dir}")
     print(json.dumps(metrics, indent=2))

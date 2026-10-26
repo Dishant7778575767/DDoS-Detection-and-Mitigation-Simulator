@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -50,7 +49,9 @@ def main() -> None:
     rf_cfg = config.get("hyperparameters", {}).get("random_forest", {})
 
     data_dir = args.data_dir or Path(paths_cfg.get("data_dir", "data/processed"))
-    output_dir = args.output_dir or Path(paths_cfg.get("rf_model_dir", "models/rf-1.0.0"))
+    output_dir = args.output_dir or Path(
+        paths_cfg.get("rf_model_dir", "models/rf-1.0.0")
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading training data from {data_dir}...")
@@ -71,7 +72,9 @@ def main() -> None:
     X_val = val_df[FEATURE_NAMES]
     y_val = val_df["label"]
 
-    print(f"Training Random Forest (samples: {len(X_train)}, features: {len(FEATURE_NAMES)})...")
+    print(
+        f"Training Random Forest (samples: {len(X_train)}, features: {len(FEATURE_NAMES)})..."
+    )
     rf = RandomForestClassifier(
         n_estimators=rf_cfg.get("n_estimators", 100),
         max_depth=rf_cfg.get("max_depth", 15),
@@ -89,7 +92,7 @@ def main() -> None:
     # Validation evaluation
     val_preds = rf.predict(X_val)
     cm = confusion_matrix(y_val, val_preds)
-    tn, fp, fn, tp = cm.ravel()
+    tn, fp, _fn, _tp = cm.ravel()
     fpr = float(fp / (fp + tn)) if (fp + tn) > 0 else 0.0
 
     # Latency measurement over 500 validation observations
@@ -131,7 +134,9 @@ def main() -> None:
         "negative_label": 0,
         "score_meaning": "Random Forest probability; not a calibrated guarantee for production use.",
     }
-    (output_dir / "feature_schema.json").write_text(json.dumps(feature_schema, indent=2), encoding="utf-8")
+    (output_dir / "feature_schema.json").write_text(
+        json.dumps(feature_schema, indent=2), encoding="utf-8"
+    )
 
     print(f"Saved Random Forest artifacts to {output_dir}")
     print(json.dumps(metrics, indent=2))

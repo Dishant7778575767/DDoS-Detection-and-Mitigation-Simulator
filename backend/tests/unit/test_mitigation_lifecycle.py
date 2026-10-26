@@ -42,4 +42,3 @@ def test_terminal_states() -> None:
     assert is_terminal_state("recovered") is True
     assert is_terminal_state("proposed") is False
     assert is_terminal_state("simulated") is False
-

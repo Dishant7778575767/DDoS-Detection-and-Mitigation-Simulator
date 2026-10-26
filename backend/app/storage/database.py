@@ -56,3 +56,18 @@ def get_db_session(
     session_factory = get_session_factory(settings)
     with session_factory() as session:
         yield session
+
+
+def init_db(settings: Settings | None = None) -> None:
+    """Initialize database tables and seed initial threshold configuration idempotently."""
+    import app.storage.models  # noqa: F401
+    from app.storage.repositories import ThresholdConfigRepository
+
+    s = settings or get_settings()
+    engine = create_database_engine(s.database_url)
+    Base.metadata.create_all(bind=engine)
+
+    session_factory = get_session_factory(s)
+    with session_factory() as session:
+        repo = ThresholdConfigRepository(session)
+        repo.get_active()

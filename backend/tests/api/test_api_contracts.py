@@ -115,7 +115,9 @@ def test_8_to_11_mitigations_endpoints(db_session: Session) -> None:
     action_id = sim_res["action_id"]
 
     # 2. List
-    list_res = list_mitigations(db_session, status_filter=None, mode_filter=None, limit=50, offset=0)
+    list_res = list_mitigations(
+        db_session, status_filter=None, mode_filter=None, limit=50, offset=0
+    )
     assert list_res.total_count >= 1
 
     # 3. Cancel
@@ -133,12 +135,16 @@ def test_8_to_11_mitigations_endpoints(db_session: Session) -> None:
 def test_12_audit_endpoint(db_session: Session) -> None:
     """Contract: GET /api/v1/audit (JSON and CSV formats)."""
     # JSON format
-    json_res = get_audit_records(db_session, event_type=None, format_type="json", limit=50, offset=0)
+    json_res = get_audit_records(
+        db_session, event_type=None, format_type="json", limit=50, offset=0
+    )
     assert isinstance(json_res, dict)
     assert "events" in json_res
 
     # CSV format
-    csv_res = get_audit_records(db_session, event_type=None, format_type="csv", limit=50, offset=0)
+    csv_res = get_audit_records(
+        db_session, event_type=None, format_type="csv", limit=50, offset=0
+    )
     assert hasattr(csv_res, "body") or hasattr(csv_res, "content")
 
 

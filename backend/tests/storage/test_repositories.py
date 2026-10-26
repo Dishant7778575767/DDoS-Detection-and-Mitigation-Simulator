@@ -134,4 +134,3 @@ def test_threshold_config_repository(db_session: Session) -> None:
     current = repo.get_active()
     assert current.id == updated.id
     assert current.pps_threshold == 8000.0
-

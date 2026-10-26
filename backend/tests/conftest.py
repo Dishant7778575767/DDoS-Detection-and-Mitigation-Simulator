@@ -13,4 +13,3 @@ def reset_safety_gate_state() -> Generator[None, None, None]:
     set_emergency_disabled(False)
     yield
     set_emergency_disabled(False)
-

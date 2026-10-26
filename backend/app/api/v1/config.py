@@ -60,6 +60,7 @@ def get_threshold_configuration(
 
 
 @router.patch("/config/thresholds", response_model=ThresholdConfigResponse)
+@router.put("/config/thresholds", response_model=ThresholdConfigResponse)
 def update_threshold_configuration(
     payload: UpdateThresholdConfigRequest,
     session: Annotated[Session, Depends(get_db_session)],

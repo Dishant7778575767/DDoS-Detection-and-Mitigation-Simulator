@@ -220,8 +220,30 @@ def cancel_mitigation(
 @router.post("/mitigations/disable")
 def emergency_disable_mitigations(
     session: Annotated[Session, Depends(get_db_session)],
+    enable: Annotated[
+        bool, Query(description="Set to true to re-enable mitigations")
+    ] = False,
 ) -> dict[str, Any]:
-    """Activate emergency disable switch to halt all mitigations."""
+    """Activate or deactivate emergency disable switch to halt or restore mitigations."""
+    if enable:
+        set_emergency_disabled(False)
+        record_audit_event(
+            session=session,
+            event_type="emergency_disable_cleared",
+            action="clear_emergency_disable",
+            actor="operator_api",
+            details={
+                "emergency_disabled": False,
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
+            },
+        )
+        return {
+            "emergency_disabled": False,
+            "status": "Mitigation safety gate re-enabled.",
+        }
+
     set_emergency_disabled(True)
     repo = MitigationRepository(session)
     active = repo.get_active_or_simulated()
