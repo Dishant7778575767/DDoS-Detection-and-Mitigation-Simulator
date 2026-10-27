@@ -10,7 +10,7 @@ export interface AlertItem {
   status: "active" | "resolved" | string;
 
   // Optional derived fields
-  target_ip?: string;
+  target_ip?: string | null;
   classification?: string;
   trigger_signal?: string;
   rf_probability?: number;
@@ -26,4 +26,3 @@ export interface AlertsListResponse {
   // alias for backward compatibility:
   total?: number;
 }
-

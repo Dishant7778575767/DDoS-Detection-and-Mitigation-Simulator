@@ -1,7 +1,7 @@
 import hmac
 from typing import Annotated
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette import status
 
@@ -16,6 +16,7 @@ def require_api_auth(
         Depends(_bearer_scheme),
     ],
     settings: Annotated[Settings, Depends(get_settings)],
+    request: Request,
 ) -> None:
     if not settings.api_auth_required:
         return
@@ -26,6 +27,11 @@ def require_api_auth(
         else ""
     )
     supplied = credentials.credentials if credentials is not None else ""
+
+    # Allow query parameter token for browser file downloads / export links
+    if not supplied and request is not None:
+        supplied = request.query_params.get("token", "")
+
     if not expected or not hmac.compare_digest(supplied, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

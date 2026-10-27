@@ -10,17 +10,17 @@ export function StatusIndicator({
   className = "",
 }: StatusIndicatorProps) {
   const dotStyles: Record<string, string> = {
-    online: "bg-emerald-400 shadow-[0_0_8px_#34d399]",
-    stale: "bg-amber-400 shadow-[0_0_8px_#fbbf24] animate-pulse",
-    disconnected: "bg-rose-500 shadow-[0_0_8px_#f43f5e]",
-    loading: "bg-sky-400 shadow-[0_0_8px_#38bdf8] animate-ping",
+    online: "bg-[#10B981] shadow-[0_0_10px_#10B981]",
+    stale: "bg-[#F59E0B] shadow-[0_0_10px_#F59E0B] animate-pulse",
+    disconnected: "bg-[#EF4444] shadow-[0_0_10px_#EF4444]",
+    loading: "bg-[#06B6D4] shadow-[0_0_10px_#06B6D4] animate-ping",
   };
 
   const defaultLabels: Record<string, string> = {
-    online: "Live Feed Active",
-    stale: "Data Stale",
-    disconnected: "Backend Disconnected",
-    loading: "Syncing...",
+    online: "Simulator: Online",
+    stale: "Telemetry Lagging",
+    disconnected: "Control Plane Offline",
+    loading: "Syncing Daemon...",
   };
 
   return (
@@ -28,8 +28,7 @@ export function StatusIndicator({
       <span className="relative flex h-2.5 w-2.5">
         <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${dotStyles[status]}`} />
       </span>
-      <span className="text-sky-200/80">{label || defaultLabels[status]}</span>
+      <span className="text-[#9CA3AF]">{label || defaultLabels[status]}</span>
     </div>
   );
 }
-

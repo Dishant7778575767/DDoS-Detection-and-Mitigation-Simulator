@@ -37,11 +37,12 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg rounded-2xl border border-cyan-500/20 bg-[#0a1628] p-6 shadow-2xl shadow-cyan-950/40">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-lg rounded-2xl border border-[rgba(75,85,99,0.4)] bg-[rgba(31,41,55,0.85)] backdrop-blur-2xl p-6 shadow-2xl shadow-black/80">
         <button
+          suppressHydrationWarning
           onClick={onClose}
-          className="absolute top-4 right-4 text-sky-300/60 hover:text-sky-200 transition-colors cursor-pointer"
+          className="absolute top-4 right-4 text-[#9CA3AF] hover:text-[#F3F4F6] transition-colors cursor-pointer"
           aria-label="Close dialog"
         >
           <XCircle className="w-5 h-5" />
@@ -49,19 +50,19 @@ export function Modal({
 
         <div className="flex items-start gap-4">
           {variant === "danger" ? (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
+            <div className="p-3 rounded-xl bg-[rgba(239,68,68,0.15)] border border-red-500/40 text-[#EF4444]">
               <AlertTriangle className="w-6 h-6" />
             </div>
           ) : (
-            <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+            <div className="p-3 rounded-xl bg-[rgba(0,255,157,0.12)] border border-[#00FF9D]/40 text-[#00FF9D]">
               <AlertTriangle className="w-6 h-6" />
             </div>
           )}
 
           <div>
-            <h3 className="text-lg font-semibold text-cyan-50">{title}</h3>
+            <h3 className="text-lg font-semibold text-gray-100">{title}</h3>
             {description && (
-              <p className="mt-1 text-sm text-sky-200/70">{description}</p>
+              <p className="mt-1 text-xs text-[#9CA3AF] font-mono">{description}</p>
             )}
           </div>
         </div>
@@ -71,4 +72,3 @@ export function Modal({
     </div>
   );
 }
-

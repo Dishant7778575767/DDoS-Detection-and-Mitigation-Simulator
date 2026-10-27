@@ -100,7 +100,10 @@ def test_hardening_configuration_defaults_and_secret_masking() -> None:
     # String representation must not expose the plain secret value
     assert "super-secret-token-12345" not in str(settings_with_secret.api_auth_token)
     assert "super-secret-token-12345" not in repr(settings_with_secret.api_auth_token)
-    assert settings_with_secret.api_auth_token.get_secret_value() == "super-secret-token-12345"
+    assert (
+        settings_with_secret.api_auth_token.get_secret_value()
+        == "super-secret-token-12345"
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -124,8 +127,8 @@ def test_hardening_error_envelope_sanitization(client: TestClient) -> None:
     # Must not leak Python internal tracebacks or source code lines
     resp_text = resp.text
     assert "Traceback (most recent call last)" not in resp_text
-    assert "File \"" not in resp_text
-    assert ".py\", line" not in resp_text
+    assert 'File "' not in resp_text
+    assert '.py", line' not in resp_text
 
     # 2. Non-existent resource error
     resp_404 = client.post("/api/v1/mitigations/non_existent_act_999/cancel")
@@ -154,7 +157,9 @@ def test_hardening_error_envelope_sanitization(client: TestClient) -> None:
         "10.0.0.1",
     ],
 )
-def test_hardening_allowlist_rejects_critical_infrastructure(critical_target: str) -> None:
+def test_hardening_allowlist_rejects_critical_infrastructure(
+    critical_target: str,
+) -> None:
     """Verify safety gate strictly forbids rate-limiting critical infrastructure targets."""
     assert is_protected_target(critical_target) is True
 
@@ -274,4 +279,3 @@ def test_hardening_simulation_safety_proof_zero_os_mutations() -> None:
         assert mock_run.call_count == 0
         assert mock_popen.call_count == 0
         assert mock_sys.call_count == 0
-

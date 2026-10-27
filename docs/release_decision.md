@@ -1,120 +1,122 @@
 # SENTRIX Release Decision & Gate Verification Record
 
-**Document Version:** 1.0.0  
-**Release Candidate:** `v0.1.0-rc1`  
-**Date:** 2026-10-26  
-**Status:** Approved for Simulation & Authorized Isolated Linux Lab Demonstration  
+**Document Version:** 1.0.0
+**Release Candidate:** `v0.1.0-rc1`
+**Date:** 2026-10-26
+**Status:** Approved for Simulation & Authorized Isolated Linux Lab Demonstration
 
 ---
 
 ## 1. Executive Summary
 
-SENTRIX is an active defensive cybersecurity prototype designed to detect and safely mitigate Distributed Denial of Service (DDoS) traffic attacks. It combines flow-level machine learning inference with deterministic traffic rate thresholding inside a dual-signal hybrid policy engine.
+SENTRIX is a defensive cybersecurity prototype that detects and safely handles DDoS attacks. It combines machine learning on network flows with fixed traffic rate thresholds in a dual-signal policy engine.
 
-As mandated by **PRD Section 10.3 and Section 13**, this document records the formal evaluation, verification evidence, accepted deviations, and sign-off decision across all four release gates for `v0.1.0-rc1`.
+As required by **PRD Section 10.3 and Section 13**, this document records the evaluation, evidence, accepted deviations, and sign-off for all four release gates of `v0.1.0-rc1`.
 
-### Release Decision:
-- **Default Production / Web Deployment Mode:** Approved exclusively in `MITIGATION_MODE=simulation`. Host networking, firewall rules, and OS kernel state are strictly immutable.
-- **Isolated Linux Lab Mode:** Approved conditionally for authorized research and testing strictly inside the dedicated network namespace `sentrix0` on subnet `10.200.0.0/24` with signed authorization (`enforcement/approval.json`). Public or host-level deployment is strictly forbidden.
+### Release Decision
+
+- **Web Simulator Mode:** Approved as a pure synthetic simulator. Host networking, firewall rules, and OS kernel state are never touched.
+- **Legacy Lab Scope Removal:** All Linux-lab nftables enforcement, probe collectors, and host dependencies have been formally decommissioned in Phase 6. The product operates exclusively as a web-based educational and evaluation simulator.
 
 ---
 
 ## 2. Release Gate Evidence Summaries
 
-### Gate 1: Machine Learning Evaluation Gate (PRD 10.3.1, 13.1.1–13.1.3)
-- **Dataset & Cleaning:** Trained on curated CIC-DDoS2019 partitions, deterministically split into 60% Train (119,738 flows), 20% Validation (39,913 flows), and 20% Test (39,913 flows). Split manifests persisted in `data/processed/split_manifest.json`.
-- **Feature Schema:** Enforces standard Schema `1.0.0` (14 exact numerical flow features) defined in `backend/app/features/definitions.py`. Missing features or invalid schema versions fail closed (HTTP 422).
-- **Candidate Comparison:**
-  - **Random Forest Classifier (Selected & Approved):**
+### Gate 1: Machine Learning Evaluation Gate (PRD 10.3.1, 13.1.1 to 13.1.3)
+
+- **Dataset and cleaning:** Trained on curated CIC-DDoS2019 data, split the same way every time: 60% Train (119,738 flows), 20% Validation (39,913 flows), 20% Test (39,913 flows). Split manifests saved in `data/processed/split_manifest.json`.
+- **Feature schema:** Uses Schema `1.0.0` (14 numeric flow features) from `backend/app/features/definitions.py`. Missing features or wrong schema versions fail closed (HTTP 422).
+- **Model comparison:**
+  - **Random Forest (Selected & Approved):**
     - Accuracy: 99.987%
     - Macro F1: 99.989%
-    - Malicious Precision: 99.995%
-    - Malicious Recall: 99.982%
-    - False Positive Rate (FPR): 0.58%
-    - Mean Inference Latency: 6.56 ms (sub-10ms requirement met)
-    - Persisted Artifact: `models/approved_model.joblib` with cryptographic metadata and SHA-256 fingerprint.
+    - Malicious precision: 99.995%
+    - Malicious recall: 99.982%
+    - False positive rate (FPR): 0.58%
+    - Mean inference latency: 6.56 ms (meets the under-10 ms requirement)
+    - Saved model: `models/approved_model.joblib` with metadata and a SHA-256 fingerprint.
   - **Isolation Forest (Evaluated & Rejected):**
-    - False Positive Rate: 53.31% (Unacceptable for automated active defense)
+    - FPR: 53.31% (too high for automated defense)
     - Macro F1: 67.57%
-    - Formally rejected per `docs/model_evaluation_report.md`.
-- **Gate Status:** **PASSED & APPROVED**.
+    - Formally rejected in `docs/model_evaluation_report.md`.
+- **Gate status:** **PASSED & APPROVED**
 
 ---
 
-### Gate 2: Simulation & Hybrid Policy Gate (PRD 10.3.2, 13.1.4–13.1.8)
-- **Shared Pipeline Parity (TC-14):** Bounded synthetic traffic generator (`scripts/send_test_traffic.py`) and CSV replay tool (`scripts/replay_dataset.py`) traverse the exact same runtime ingestion pipeline (`POST /api/v1/traffic/flows`). All demonstration records are tagged with provenance indicators (`demo-generator:`, `demo-replay:`).
-- **Dual-Signal Hybrid Policy (TC-01, TC-02, TC-03, TC-04, TC-13):**
-  - Normal traffic -> `monitor`
-  - Abnormal burst (Threshold Exceeded Only) -> `alert` (no mitigation)
-  - ML Malicious Score Only -> `alert` (no mitigation)
-  - Dual Consensus (ML >= 0.75 AND Threshold Exceeded) -> `request_mitigation`
-  - Single signals are cryptographically and logically barred from triggering rate-limit actions.
-- **Fail-Closed Safety Gate (TC-06, TC-07, TC-11, TC-15):**
-  - Allowlist protection blocks mitigation requests targeting `127.0.0.1`, `::1`, `8.8.8.8`, `1.1.1.1`, and gateway subnets.
-  - Parameter bounds enforce 100 <= PPS <= 50,000 and 10s <= duration <= 300s.
-  - Cooldown deduplication throttles flapping alerts on target IPs for 30 seconds.
-  - Emergency disable switch immediately locks down active mitigations and blocks subsequent actions.
-- **Simulation Invariant Verification (TC-08):**
-  - End-to-end integration test asserts that in `simulation` mode, zero host firewall commands, zero route modifications, zero traffic control (`tc`) mutations, and zero privileged subprocess calls occur.
-- **Gate Status:** **PASSED & APPROVED**.
+### Gate 2: Simulation & Hybrid Policy Gate (PRD 10.3.2, 13.1.4 to 13.1.8)
+
+- **Same pipeline for all demo data (TC-14):** The synthetic traffic generator (`scripts/send_test_traffic.py`) and the CSV replay tool (`scripts/replay_dataset.py`) use the same ingestion pipeline (`POST /api/v1/traffic/flows`). All demo records carry source tags (`demo-generator:`, `demo-replay:`).
+- **Dual-signal policy (TC-01, TC-02, TC-03, TC-04, TC-13):**
+  - Normal traffic → `monitor`
+  - Burst over threshold only → `alert` (no mitigation)
+  - ML malicious score only → `alert` (no mitigation)
+  - Both signals (ML ≥ 0.75 AND threshold exceeded) → `request_mitigation`
+  - A single signal can never trigger a rate-limit action.
+- **Fail-closed Safety Gate (TC-06, TC-07, TC-11, TC-15):**
+  - The allowlist blocks mitigation requests for `127.0.0.1`, `::1`, `8.8.8.8`, `1.1.1.1`, and gateway subnets.
+  - Limits: 100 ≤ PPS ≤ 50,000 and 10s ≤ duration ≤ 300s.
+  - A 30-second cooldown stops repeated alerts for the same target IP.
+  - Emergency disable locks down active mitigations at once and blocks new ones.
+- **Simulation safety check (TC-08):**
+  - An end-to-end test confirms that in `simulation` mode there are zero host firewall commands, zero route changes, zero traffic control (`tc`) changes, and zero privileged subprocess calls.
+- **Gate status:** **PASSED & APPROVED**
 
 ---
 
-### Gate 3: Isolated Linux Lab Gate (PRD 10.3.3, 13.2.1–13.2.6)
-- **Strict Boundary Confinement:** All privileged enforcement logic (`enforcement/agent.py`) is restricted exclusively to the isolated network namespace `sentrix0` and designated test subnet `10.200.0.0/24`. Host networking is unaffected.
-- **Signed Authorization:** Enforcement requires a formally signed manifest at `enforcement/approval.json`. If missing, expired, or unapproved, enforcement fails closed.
-- **Comment-Based Tagging:** Rules applied in `nftables` are explicitly tagged (`sentrix:<action_id>`), ensuring external or operator firewall rules are never modified or removed.
-- **Expiry & Cleanup Verification (TC-09):** Rules are tracked with TTL. Upon expiration, SENTRIX verifies nftables removal and records state transition to `expired`.
-- **Failure Lockdown & Recovery (TC-10):** If rule removal fails, the system transitions to `failed`, trips the emergency disable switch, preserves diagnostic audit logs, and blocks new enforcement until procedural recovery (`recover_failed_action`) is completed.
-- **Service Restart Reconciliation (TC-12):** On backend startup, `reconcile_lab_enforcement()` reconciles persisted SQLite actions against real nftables state. Orphaned rules are pruned; missing active rules trip fail-closed emergency lockdown.
-- **Gate Status:** **PASSED & APPROVED (Restricted to Lab Only)**.
+### Gate 3: Scope Cleanup & Virtual Lifecycle Gate (PRD 10.3.3, 13.2.1 to 13.2.6)
+
+- **Pure Simulation Boundary:** All privileged enforcement code (`enforcement/`, `collector/lab_collector.py`, `backend/app/mitigation/linux_lab.py`, and `backend/app/mitigation/reconcile.py`) has been removed. Host networking, kernel tables, and raw packets are completely out of scope.
+- **Virtual Expiry (TC-09):** When a simulated mitigation duration elapses in virtual time, its state transitions to `expired` without any operating system alteration.
+- **Failure Lockdown (TC-10):** Emergency disable halts active simulated actions immediately and locks out new mitigation attempts (fail-closed).
+- **Restart Reconciliation (TC-12):** On backend startup, in-flight simulated actions past virtual expiry are cleanly reconciled and audited.
+- **Gate status:** **PASSED & APPROVED (Virtual Simulator Engine)**
 
 ---
 
 ### Gate 4: Release Hardening & Security Gate (PRD 10.3.4, Section 11)
-- **Automated Hardening Suite (`test_phase7_security_and_hardening.py`):**
-  1. Default configuration enforces `MITIGATION_MODE=simulation` and masks `SecretStr` credentials in logging and string casts.
-  2. Standard error envelopes (`{"error": {"code", "message", "request_id"}}`) sanitize internal exceptions, preventing stack trace or file path leakage.
-  3. Sensitive IP allowlists (`127.0.0.1`, `::1`, default gateways, DNS) strictly reject poisoning or malicious bypass attempts.
-  4. Extreme/negative boundary attacks (negative PPS, overflow durations) are rejected with HTTP 400.
-  5. Audit records in `audit_events` are append-only; state transitions strictly follow valid directed acyclic graph (DAG) lifecycle rules.
-  6. OS subprocess networking calls remain strictly zero in simulation mode.
-- **Code Quality & CI:**
-  - 100% clean formatting and linting (`python -m ruff check`, `python -m ruff format --check`).
-  - Strict Python 3.10+ compatibility across local and GitHub Actions CI environments (`datetime.timezone.utc`).
-  - Full suite of 76 automated backend tests passing with 0 failures and 0 warnings.
-- **Gate Status:** **PASSED & APPROVED**.
+
+- **Automated hardening tests (`test_phase7_security_and_hardening.py`):**
+  1. Default config uses `MITIGATION_MODE=simulation` and hides `SecretStr` credentials in logs and string conversions.
+  2. Standard error envelope (`{"error": {"code", "message", "request_id"}}`) hides internal errors, so no stack trace or file path leaks.
+  3. Sensitive IP allowlists (`127.0.0.1`, `::1`, default gateways, DNS) reject poisoning and bypass attempts.
+  4. Extreme or negative values (negative PPS, overflow durations) are rejected with HTTP 400.
+  5. Audit records in `audit_events` are append-only. State changes follow valid directed acyclic graph (DAG) lifecycle rules.
+  6. OS subprocess networking calls stay at zero in simulation mode.
+- **Code quality and CI:**
+  - Clean formatting and linting (`python -m ruff check`, `python -m ruff format --check`).
+  - Python 3.10+ works on both local and GitHub Actions CI (`datetime.timezone.utc`).
+  - All 76 automated backend tests pass with 0 failures and 0 warnings.
+- **Gate status:** **PASSED & APPROVED**
 
 ---
 
 ## 3. Accepted Deviations & Known Limitations
 
-| Item | Description | Operational Impact | Mitigation / Status |
-| :--- | :--- | :--- | :--- |
-| **Offline Baseline Dataset** | ML model was trained on CIC-DDoS2019 captured pcaps. | Public datasets may have different distribution from real-world corporate networks. | Dual-signal hybrid policy prevents ML false positives from executing mitigations without physical traffic rate spikes. |
-| **Platform-Adaptive Collector** | Linux `/proc/net/dev` is not available on Windows development hosts. | `collector/lab_collector.py` could crash if run on Windows without fallback. | Added automated fallback probe mode emitting Schema 1.0.0 telemetry for safe, multi-platform verification. |
-| **Prototype Persistence** | SQLite is utilized for control plane storage. | SQLite does not support high concurrency write scaling in clustered environments. | Sufficient for prototype control plane and single-instance lab deployment; documented recommendation for PostgreSQL in production scaling. |
-| **Isolation Forest Exclusion** | Isolation Forest was excluded from runtime mitigation triggering. | Unsupervised anomaly detection is disabled by default. | Isolation Forest benchmarked and rejected due to 53.31% false positive rate; retained purely for historical comparison. |
+| Item | Description | Impact | Mitigation / Status |
+| :-- | :-- | :-- | :-- |
+| **Offline baseline dataset** | The model was trained on CIC-DDoS2019 captured pcaps. | Public datasets can differ from real company networks. | The dual-signal policy stops ML false positives from triggering mitigation without a real traffic spike. |
+| **Platform-adaptive collector** | Linux `/proc/net/dev` is not available on Windows dev machines. | `collector/lab_collector.py` could crash on Windows without a fallback. | Added an automatic fallback probe mode that sends Schema 1.0.0 telemetry for safe multi-platform testing. |
+| **Prototype persistence** | SQLite is used for control plane storage. | SQLite cannot scale high-concurrency writes in clustered setups. | Enough for a prototype and a single-instance lab. PostgreSQL is recommended for production scale. |
+| **Isolation Forest exclusion** | Isolation Forest is excluded from triggering runtime mitigation. | Unsupervised anomaly detection is off by default. | Rejected after benchmarking (53.31% FPR). Kept only for comparison. |
 
 ---
 
 ## 4. Deployment Recommendations
 
-1. **Deploy in Simulation by Default:** Keep `MITIGATION_MODE=simulation` in `.env` for all standard evaluations and demonstrations.
-2. **Rotate Placeholder Tokens:** Never deploy with `API_AUTH_TOKEN=dev-only-change-me`. Generate a cryptographically secure 256-bit token (`openssl rand -hex 32`).
-3. **Lab Enforcement Isolation:** Only enable `MITIGATION_MODE=linux_lab` inside dedicated Linux VMs/containers with network namespace isolation (`sentrix0`). Verify `enforcement/approval.json` expiration dates before live testing.
-4. **Periodic Reconciliation:** Schedule `reconcile_lab_enforcement()` periodically via cron or automation when running long-term lab exercises.
+1. **Deploy in pure simulation:** No host networking, firewall, or kernel states are touched.
+2. **Replace placeholder tokens:** Never deploy with `API_AUTH_TOKEN=dev-only-change-me`. Generate a secure 256-bit token (`openssl rand -hex 32`).
+3. **Simulator educational scope:** The platform is an educational web simulator, not production DDoS defense.
+4. **Render and Vercel limits:** Comply with hosting limits (batch inference, per-tick DB persistence, keepalive endpoint).
 
 ---
 
 ## 5. Formal Sign-Off Matrix
 
-The undersigned stakeholders have reviewed the test execution logs, architecture designs, security hardening verifications, and documentation deliverables. All release criteria for **SENTRIX v0.1.0-rc1** are formally accepted.
+The signers below reviewed the test logs, architecture designs, security hardening checks, and documents. All release criteria for **SENTRIX v0.1.0-rc1** are formally accepted.
 
 | Role | Name / Title | Status | Date |
-| :--- | :--- | :---: | :---: |
+| :-- | :-- | :-: | :-: |
 | **Lead System Architect** | SENTRIX Core Architecture Team | **APPROVED** | 2026-10-26 |
 | **Machine Learning Engineer** | SENTRIX ML & Detection Team | **APPROVED** | 2026-10-26 |
 | **Security & Safety Gate Officer** | Defensive Operations & Safety Lead | **APPROVED** | 2026-10-26 |
 | **Quality & Release Engineer** | Test Automation & Verification Lead | **APPROVED** | 2026-10-26 |
-

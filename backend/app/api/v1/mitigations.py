@@ -3,22 +3,36 @@
 from __future__ import annotations
 
 import datetime
+import logging
+import os
+import socket
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.security import require_api_auth
-from app.mitigation.lifecycle import validate_lifecycle_transition
+from app.mitigation.lifecycle import (
+    IllegalTransitionError,
+    validate_lifecycle_transition,
+)
 from app.mitigation.simulation import SimulationAdapter
 from app.safety.gate import (
+    MAX_CONCURRENT_MITIGATIONS,
+    MAX_DURATION_SECONDS,
+    MAX_RATE_LIMIT_PPS,
+    MIN_DURATION_SECONDS,
+    MIN_RATE_LIMIT_PPS,
+    is_emergency_disabled,
     set_emergency_disabled,
     validate_safety_gate,
 )
 from app.storage.audit import record_audit_event
 from app.storage.database import get_db_session
 from app.storage.repositories import MitigationRepository
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["mitigations"], dependencies=[Depends(require_api_auth)])
 simulation_adapter = SimulationAdapter()
@@ -52,33 +66,194 @@ class SimulateMitigationRequest(BaseModel):
     target_port: int | None = Field(default=None, ge=0, le=65535)
     rate_limit_pps: int = Field(default=1000, ge=100, le=50000)
     duration_seconds: int = Field(default=60, ge=10, le=300)
+    action_type: str | None = Field(default="rate_limit", description="Action type")
+    reason: str | None = Field(default=None, description="Operator simulation reason")
+
+
+def resolve_host_network_info(request: Request | None = None) -> dict[str, Any]:
+    """Detect dynamic server network metadata (Host IP, Deployed Cloud Domain, DNS Gateways)."""
+    # 1. Check cloud hosting environment variables
+    deployed_host = (
+        os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+        or os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+        or os.environ.get("FLY_APP_NAME")
+        or os.environ.get("SERVER_IP")
+        or os.environ.get("DEPLOYED_SERVER_IP")
+        or os.environ.get("HOST_DOMAIN")
+    )
+    is_deployed = bool(
+        deployed_host
+        or os.environ.get("RENDER")
+        or os.environ.get("RAILWAY_ENVIRONMENT")
+        or os.environ.get("FLY_ALLOC_ID")
+        or os.environ.get("VERCEL")
+        or os.environ.get("PRODUCTION") == "true"
+        or os.environ.get("APP_ENV") == "production"
+    )
+
+    # Check request headers for proxy / cloud hostname if not already determined
+    if request is not None:
+        req_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        if req_host:
+            host_clean = req_host.split(":")[0].strip()
+            if host_clean and host_clean not in ("localhost", "127.0.0.1", "0.0.0.0", "testserver"):
+                is_deployed = True
+                if not deployed_host:
+                    deployed_host = host_clean
+
+    # 2. Outward interface IP / Local IP
+    local_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.2)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            local_ip = "127.0.0.1"
+
+    host_ip = deployed_host if (is_deployed and deployed_host) else local_ip
+    hostname = "localhost"
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        pass
+
+    # 3. Dynamic DNS Gateways
+    dns_gateways = ["8.8.8.8", "1.1.1.1"]
+    env_dns = os.environ.get("DNS_GATEWAYS") or os.environ.get("DEFAULT_DNS")
+    if env_dns:
+        dns_gateways = [d.strip() for d in env_dns.split(",") if d.strip()]
+    elif os.name != "nt":
+        resolv_path = "/etc/resolv.conf"
+        if os.path.exists(resolv_path):
+            try:
+                found_dns: list[str] = []
+                with open(resolv_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("nameserver "):
+                            parts = line.split()
+                            if len(parts) > 1:
+                                ns = parts[1].strip()
+                                if ns and ns not in found_dns and ns != "127.0.0.53":
+                                    found_dns.append(ns)
+                if found_dns:
+                    dns_gateways = found_dns[:3]
+            except Exception:
+                pass
+
+    return {
+        "host_ip": host_ip,
+        "hostname": hostname,
+        "is_deployed": is_deployed,
+        "environment": "deployed" if is_deployed else "local",
+        "dns_gateways": dns_gateways,
+        "protected_gateways": ["192.168.1.1", "10.0.0.1"],
+    }
+
+
+@router.get("/mitigations/status")
+def get_mitigation_system_status(
+    session: Annotated[Session, Depends(get_db_session)],
+    request: Request = None,
+) -> dict[str, Any]:
+    """Return live status of the mitigation subsystem including safety gates, dynamic network info, and active shield countdown."""
+    repo = MitigationRepository(session)
+    repo.expire_stale_mitigations()
+    active_items = repo.get_active_or_simulated()
+    active_count = len(active_items)
+
+    latest_mitigation = None
+    shield_active = False
+
+    if active_items:
+        latest = active_items[0]
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        rem_sec = 0
+        if latest.expires_at:
+            try:
+                exp_dt = datetime.datetime.fromisoformat(latest.expires_at.replace("Z", "+00:00"))
+                rem_sec = max(0, int((exp_dt - now_dt).total_seconds()))
+            except Exception:
+                rem_sec = latest.duration_seconds
+        else:
+            rem_sec = latest.duration_seconds
+
+        shield_active = rem_sec > 0
+        latest_mitigation = {
+            "action_id": latest.action_id,
+            "target_ip": latest.target_ip,
+            "target_port": latest.target_port,
+            "rate_limit_pps": latest.rate_limit_pps,
+            "duration_seconds": latest.duration_seconds,
+            "remaining_seconds": rem_sec,
+            "status": latest.status,
+            "expires_at": latest.expires_at,
+        }
+
+    network_info = resolve_host_network_info(request)
+
+    return {
+        "emergency_disabled": is_emergency_disabled(),
+        "mode": "simulation",
+        "shield_active": shield_active,
+        "active_simulated_count": active_count,
+        "max_concurrent_limit": MAX_CONCURRENT_MITIGATIONS,
+        "status": "locked_down" if is_emergency_disabled() else "operational",
+        "latest_mitigation": latest_mitigation,
+        "host_ip": network_info["host_ip"],
+        "hostname": network_info["hostname"],
+        "is_deployed": network_info["is_deployed"],
+        "environment": network_info["environment"],
+        "dns_gateways": network_info["dns_gateways"],
+        "protected_gateways": network_info["protected_gateways"],
+        "rate_limit_bounds": {
+            "min_pps": MIN_RATE_LIMIT_PPS,
+            "max_pps": MAX_RATE_LIMIT_PPS,
+        },
+        "duration_bounds": {
+            "min_seconds": MIN_DURATION_SECONDS,
+            "max_seconds": MAX_DURATION_SECONDS,
+        },
+        "cooldown_ticks": 10,
+    }
 
 
 @router.get("/mitigations", response_model=MitigationsListResponse)
 def list_mitigations(
     session: Annotated[Session, Depends(get_db_session)],
-    status_filter: str | None = Query(
-        default=None,
-        alias="status",
-        description="Filter by status (e.g., 'simulated', 'cancelled')",
-    ),
-    mode_filter: str | None = Query(
-        default=None, alias="mode", description="Filter by mode ('simulation', 'lab')"
-    ),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    status_filter: Annotated[
+        str | None,
+        Query(
+            alias="status",
+            description="Filter by status (e.g., 'simulated', 'cancelled')",
+        ),
+    ] = None,
+    mode_filter: Annotated[
+        str | None,
+        Query(alias="mode", description="Filter by mode ('simulation', 'lab')"),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> MitigationsListResponse:
     """Return filtered and paginated mitigations."""
+    safe_limit = limit.default if hasattr(limit, "default") else int(limit)
+    safe_offset = offset.default if hasattr(offset, "default") else int(offset)
+
     repo = MitigationRepository(session)
     items = repo.list_filtered(
-        status=status_filter, mode=mode_filter, limit=limit, offset=offset
+        status=status_filter, mode=mode_filter, limit=safe_limit, offset=safe_offset
     )
     total = repo.count_filtered(status=status_filter, mode=mode_filter)
 
     return MitigationsListResponse(
         total_count=total,
-        limit=limit,
-        offset=offset,
+        limit=safe_limit,
+        offset=safe_offset,
         mitigations=[
             MitigationItem(
                 action_id=m.action_id,
@@ -106,6 +281,12 @@ def simulate_mitigation(
     session: Annotated[Session, Depends(get_db_session)],
 ) -> dict[str, Any]:
     """Evaluate safety gate and execute a simulation-only rate-limiting action."""
+    logger.info(
+        "Simulation mitigation request received: target_ip=%s, rate_limit=%s pps, duration=%ss",
+        payload.target_ip,
+        payload.rate_limit_pps,
+        payload.duration_seconds,
+    )
     repo = MitigationRepository(session)
     active_count = repo.count_filtered(status="simulated")
 
@@ -118,6 +299,12 @@ def simulate_mitigation(
         mitigation_mode="simulation",
     )
     if not safety_result.allowed:
+        logger.warning(
+            "Safety Gate REJECTED mitigation request: %s (target_ip=%s, rate_limit=%s pps)",
+            safety_result.rejection_reason,
+            payload.target_ip,
+            payload.rate_limit_pps,
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=safety_result.rejection_reason
@@ -181,7 +368,7 @@ def cancel_mitigation(
     # Validate lifecycle transition
     try:
         validate_lifecycle_transition(mitigation.status, "cancelled")
-    except Exception as exc:
+    except IllegalTransitionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),

@@ -18,6 +18,7 @@ def test_app_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("API_AUTH_REQUIRED", "true")
     monkeypatch.setenv("API_AUTH_TOKEN", "main-test-token")
     monkeypatch.setenv("KEEPALIVE_SECRET", "super-secret-keepalive-key")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./sentrix.db")
     get_settings.cache_clear()
 
     app = create_app()
@@ -61,6 +62,7 @@ def test_keepalive_fallback_to_api_token_when_secret_unset(
     monkeypatch.setenv("API_AUTH_REQUIRED", "true")
     monkeypatch.setenv("API_AUTH_TOKEN", "fallback-token-456")
     monkeypatch.setenv("KEEPALIVE_SECRET", "")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./sentrix.db")
     get_settings.cache_clear()
 
     app = create_app()
@@ -81,6 +83,7 @@ def test_keepalive_database_failure_returns_503(
     monkeypatch.setenv("API_AUTH_REQUIRED", "true")
     monkeypatch.setenv("API_AUTH_TOKEN", "main-test-token")
     monkeypatch.setenv("KEEPALIVE_SECRET", "super-secret-keepalive-key")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./sentrix.db")
     get_settings.cache_clear()
 
     app = create_app()

@@ -9,6 +9,7 @@ def test_health_requires_authentication_by_default(
 ) -> None:
     monkeypatch.setenv("API_AUTH_REQUIRED", "true")
     monkeypatch.setenv("API_AUTH_TOKEN", "test-token")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./sentrix.db")
     get_settings.cache_clear()
 
     with TestClient(create_app()) as client:
@@ -25,6 +26,7 @@ def test_health_returns_minimal_authenticated_status(
 ) -> None:
     monkeypatch.setenv("API_AUTH_REQUIRED", "true")
     monkeypatch.setenv("API_AUTH_TOKEN", "test-token")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./sentrix.db")
     get_settings.cache_clear()
 
     with TestClient(create_app()) as client:
@@ -44,6 +46,7 @@ def test_internal_error_does_not_expose_exception_details(
 ) -> None:
     monkeypatch.setenv("API_AUTH_REQUIRED", "false")
     monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./sentrix.db")
     get_settings.cache_clear()
     app = create_app()
 
@@ -69,6 +72,7 @@ def test_validation_error_uses_documented_error_envelope(
 ) -> None:
     monkeypatch.setenv("API_AUTH_REQUIRED", "false")
     monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./sentrix.db")
     get_settings.cache_clear()
     app = create_app()
 

@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-export type ButtonVariant = "primary" | "danger" | "outline" | "ghost";
+export type ButtonVariant = "primary" | "cyan" | "danger" | "outline" | "ghost";
 export type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -12,13 +12,15 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    "bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold shadow-[0_0_15px_rgba(0,229,255,0.3)] hover:shadow-[0_0_20px_rgba(0,229,255,0.5)] border border-cyan-300/40",
+    "bg-[#00FF9D] hover:bg-[#26ffa9] text-[#090D16] font-bold shadow-[0_0_18px_rgba(0,255,157,0.35)] hover:shadow-[0_0_24px_rgba(0,255,157,0.55)] border border-[#00FF9D]/60",
+  cyan:
+    "bg-[#06B6D4] hover:bg-[#22d3ee] text-[#090D16] font-bold shadow-[0_0_18px_rgba(6,182,212,0.35)] hover:shadow-[0_0_24px_rgba(6,182,212,0.55)] border border-[#06B6D4]/60",
   danger:
-    "bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow-[0_0_15px_rgba(244,63,94,0.3)] hover:shadow-[0_0_20px_rgba(244,63,94,0.5)] border border-rose-400/40",
+    "bg-[#EF4444] hover:bg-[#f87171] text-white font-semibold shadow-[0_0_18px_rgba(239,68,68,0.35)] hover:shadow-[0_0_24px_rgba(239,68,68,0.55)] border border-red-400/40",
   outline:
-    "bg-cyan-950/20 hover:bg-cyan-950/40 text-cyan-200 border border-cyan-500/30 hover:border-cyan-400",
+    "bg-[rgba(31,41,55,0.6)] hover:bg-[rgba(31,41,55,0.9)] text-[#9CA3AF] hover:text-[#00FF9D] border border-[rgba(75,85,99,0.4)] hover:border-[#00FF9D]/40 backdrop-blur-md transition-colors",
   ghost:
-    "bg-transparent hover:bg-cyan-500/10 text-cyan-300 border border-transparent",
+    "bg-transparent hover:bg-[rgba(31,41,55,0.5)] text-[#9CA3AF] hover:text-[#F3F4F6] border border-transparent",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -38,7 +40,8 @@ export function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      suppressHydrationWarning
+      className={`inline-flex items-center justify-center gap-2 transition-all cursor-pointer font-sans disabled:opacity-50 disabled:cursor-not-allowed ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
       disabled={disabled || loading}
       {...props}
     >
@@ -49,4 +52,3 @@ export function Button({
     </button>
   );
 }
-

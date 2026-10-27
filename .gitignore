@@ -1,7 +1,7 @@
 # Environment and secrets
 .env
 .env.*
-!.env.example
+.env.example
 
 # Local datasets and captures; keep data/README.md and test fixtures tracked
 data/raw/

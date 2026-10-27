@@ -10,6 +10,7 @@ import type {
   ApiError,
   AuditListResponse,
   CancelMitigationResponse,
+  CreateSimulationRequest,
   EmergencyDisableResponse,
   FlowObservationRequest,
   FlowObservationResponse,
@@ -19,6 +20,10 @@ import type {
   ModelsResponse,
   SimulateMitigationRequest,
   SimulateMitigationResponse,
+  SimulationControlResponse,
+  SimulationListResponse,
+  SimulationRunResponse,
+  SimulationTicksResponse,
   ThresholdConfigResponse,
   TrafficSummaryResponse,
   UpdateThresholdConfigRequest,
@@ -26,18 +31,56 @@ import type {
 
 export * from "@/types";
 
-// Client configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-const DEFAULT_AUTH_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "7c4e9f2b1a8d3f6cf1b2c3d4e5f60789";
+// Client configuration: Supports direct API connection or secure server-side Vercel proxy
+const USE_PROXY = process.env.NEXT_PUBLIC_USE_PROXY === "true";
+const API_BASE_URL = USE_PROXY
+  ? "/api/proxy"
+  : process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const DEFAULT_AUTH_TOKEN =
+  process.env.NEXT_PUBLIC_API_TOKEN || "7c4e9f2b1a8d3f6cf1b2c3d4e5f60789";
 
-let currentToken: string = DEFAULT_AUTH_TOKEN;
+let currentToken: string =
+  typeof window !== "undefined"
+    ? localStorage.getItem("sentrix_api_token") || DEFAULT_AUTH_TOKEN
+    : DEFAULT_AUTH_TOKEN;
 
 export function setApiAuthToken(token: string): void {
   currentToken = token;
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem("sentrix_api_token", token);
+    } catch {
+      // Ignored in restricted environments
+    }
+  }
 }
 
 export function getApiAuthToken(): string {
-  return currentToken;
+  if (!currentToken && typeof window !== "undefined") {
+    currentToken =
+      localStorage.getItem("sentrix_api_token") || DEFAULT_AUTH_TOKEN;
+  }
+  return currentToken || DEFAULT_AUTH_TOKEN;
+}
+
+export class SentrixApiError extends Error implements ApiError {
+  code: string;
+  requestId?: string;
+  details?: unknown;
+
+  constructor(
+    message: string,
+    code: string,
+    requestId?: string,
+    details?: unknown
+  ) {
+    super(message);
+    this.name = "SentrixApiError";
+    this.code = code;
+    this.requestId = requestId;
+    this.details = details;
+    Object.setPrototypeOf(this, SentrixApiError.prototype);
+  }
 }
 
 async function fetchJson<T>(
@@ -51,8 +94,9 @@ async function fetchJson<T>(
     headers.set("Content-Type", "application/json");
   }
 
-  if (currentToken && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${currentToken}`);
+  const tokenToUse = currentToken || DEFAULT_AUTH_TOKEN;
+  if (tokenToUse && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${tokenToUse}`);
   }
 
   const url = `${API_BASE_URL}${endpoint}`;
@@ -64,34 +108,53 @@ async function fetchJson<T>(
     });
 
     if (!res.ok) {
-      let errPayload: { error?: { code?: string; message?: string; request_id?: string; details?: unknown } } | undefined;
+      let errPayload: Record<string, unknown> | undefined;
       try {
-        errPayload = (await res.json()) as typeof errPayload;
+        errPayload = (await res.json()) as Record<string, unknown>;
       } catch {
-        throw {
-          code: `HTTP_${res.status}`,
-          message: res.statusText || "Request failed",
-        } as ApiError;
+        throw new SentrixApiError(
+          res.statusText || "Request failed",
+          `HTTP_${res.status}`
+        );
       }
 
-      throw {
-        code: errPayload?.error?.code || `HTTP_${res.status}`,
-        message: errPayload?.error?.message || "An error occurred",
-        requestId: errPayload?.error?.request_id,
-        details: errPayload?.error?.details,
-      } as ApiError;
+      let message = "An error occurred";
+      let code = `HTTP_${res.status}`;
+      let requestId: string | undefined;
+      let details: unknown;
+
+      if (errPayload) {
+        if (errPayload.error && typeof errPayload.error === "object") {
+          const errObj = errPayload.error as Record<string, unknown>;
+          message = (errObj.message as string) || message;
+          code = (errObj.code as string) || code;
+          requestId = errObj.request_id as string | undefined;
+          details = errObj.details;
+        } else if (typeof errPayload.detail === "string") {
+          message = errPayload.detail;
+        } else if (Array.isArray(errPayload.detail)) {
+          message = errPayload.detail
+            .map((d: { msg?: string }) => d.msg || JSON.stringify(d))
+            .join(", ");
+        } else if (typeof errPayload.message === "string") {
+          message = errPayload.message;
+        }
+      }
+
+      throw new SentrixApiError(message, code, requestId, details);
     }
 
     return (await res.json()) as T;
   } catch (err: unknown) {
-    if (err && typeof err === "object" && "code" in err) {
-      throw err as ApiError;
+    if (err instanceof SentrixApiError) {
+      throw err;
     }
-    const message = err instanceof Error ? err.message : "Could not connect to SENTRIX API backend";
-    throw {
-      code: "NETWORK_ERROR",
-      message,
-    } as ApiError;
+    const rawMsg = err instanceof Error ? err.message : "";
+    const message =
+      rawMsg === "Failed to fetch" || !rawMsg
+        ? `Could not connect to SENTRIX API backend at ${API_BASE_URL}. Ensure the backend server is running.`
+        : rawMsg;
+    throw new SentrixApiError(message, "NETWORK_ERROR");
   }
 }
 
@@ -151,10 +214,47 @@ export const api = {
     fetchJson<CancelMitigationResponse>(`/api/v1/mitigations/${encodeURIComponent(actionId)}/cancel`, {
       method: "POST",
     }),
-  emergencyDisable: () =>
-    fetchJson<EmergencyDisableResponse>("/api/v1/mitigations/disable", {
-      method: "POST",
-    }),
+  emergencyDisable: (enable = false) =>
+    fetchJson<EmergencyDisableResponse>(
+      `/api/v1/mitigations/disable${enable ? "?enable=true" : ""}`,
+      {
+        method: "POST",
+      }
+    ),
+  getMitigationStatus: () =>
+    fetchJson<{
+      emergency_disabled: boolean;
+      mode: string;
+      shield_active?: boolean;
+      active_simulated_count: number;
+      max_concurrent_limit: number;
+      status: string;
+      latest_mitigation?: {
+        action_id: string;
+        target_ip: string;
+        target_port?: number | null;
+        rate_limit_pps: number;
+        duration_seconds: number;
+        remaining_seconds: number;
+        status: string;
+        expires_at?: string | null;
+      } | null;
+      host_ip?: string;
+      hostname?: string;
+      is_deployed?: boolean;
+      environment?: string;
+      dns_gateways?: string[];
+      protected_gateways?: string[];
+      rate_limit_bounds?: {
+        min_pps: number;
+        max_pps: number;
+      };
+      duration_bounds?: {
+        min_seconds: number;
+        max_seconds: number;
+      };
+      cooldown_ticks?: number;
+    }>("/api/v1/mitigations/status"),
 
   // 12. Audit
   getAudit: (params?: { limit?: number; offset?: number; event_type?: string }) => {
@@ -174,4 +274,61 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+
+  // 15. Simulations (Phase 11)
+  createSimulation: (payload: CreateSimulationRequest) =>
+    fetchJson<SimulationRunResponse>("/api/v1/simulations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listSimulations: (params?: { status?: string; limit?: number; offset?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.offset) q.set("offset", String(params.offset));
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return fetchJson<SimulationListResponse>(`/api/v1/simulations${qs}`);
+  },
+  getSimulation: (runId: string) =>
+    fetchJson<SimulationRunResponse>(`/api/v1/simulations/${encodeURIComponent(runId)}`),
+  controlSimulation: (runId: string, action: string) =>
+    fetchJson<SimulationControlResponse>(`/api/v1/simulations/${encodeURIComponent(runId)}/control`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    }),
+  getSimulationTicks: (runId: string, params?: { limit?: number; offset?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.offset) q.set("offset", String(params.offset));
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return fetchJson<SimulationTicksResponse>(`/api/v1/simulations/${encodeURIComponent(runId)}/ticks${qs}`);
+  },
+  compareSimulations: (runIds: string[]) =>
+    fetchJson<Record<string, unknown>>("/api/v1/simulations/compare", {
+      method: "POST",
+      body: JSON.stringify({ run_ids: runIds }),
+    }),
+  getSimulationExportUrl: (runId: string, format: "json" | "markdown" | "csv" = "json") =>
+    `${API_BASE_URL}/api/v1/simulations/${encodeURIComponent(runId)}/export?format=${format}&token=${encodeURIComponent(currentToken)}`,
+  downloadSimulationExport: async (runId: string, format: "csv" | "json" = "csv") => {
+    const url = `${API_BASE_URL}/api/v1/simulations/${encodeURIComponent(runId)}/export?format=${format}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${currentToken}`,
+      },
+    });
+    if (!res.ok) {
+      throw new Error(`Export download failed: ${res.statusText}`);
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = `sentrix_sim_${runId}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  },
+  getAuthToken: () => currentToken,
 };

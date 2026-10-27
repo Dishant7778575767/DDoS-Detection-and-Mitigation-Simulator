@@ -34,19 +34,35 @@ class AuditListResponse(BaseModel):
     events: list[AuditItem]
 
 
+def _parse_details(val: Any) -> dict:
+    if isinstance(val, dict):
+        return val
+    if not val:
+        return {}
+    try:
+        return json.loads(val)
+    except Exception:
+        return {"raw": str(val)}
+
+
 @router.get("/audit", response_model=None)
 def get_audit_records(
     session: Annotated[Session, Depends(get_db_session)],
-    event_type: str | None = Query(default=None, description="Filter by event type"),
-    format_type: str = Query(
-        default="json", alias="format", description="Output format: 'json' or 'csv'"
-    ),
-    limit: int = Query(default=50, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    event_type: Annotated[str | None, Query(description="Filter by event type")] = None,
+    format_type: Annotated[
+        str, Query(alias="format", description="Output format: 'json' or 'csv'")
+    ] = "json",
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Response | dict[str, Any]:
     """Return immutable system and security audit records."""
+    safe_limit = limit.default if hasattr(limit, "default") else int(limit)
+    safe_offset = offset.default if hasattr(offset, "default") else int(offset)
+
     repo = AuditRepository(session)
-    records = repo.list_filtered(event_type=event_type, limit=limit, offset=offset)
+    records = repo.list_filtered(
+        event_type=event_type, limit=safe_limit, offset=safe_offset
+    )
     total = repo.count_filtered(event_type=event_type)
 
     if format_type.lower() == "csv":
@@ -74,7 +90,7 @@ def get_audit_records(
             event_type=r.event_type,
             action=r.action,
             actor=r.actor,
-            details=json.loads(r.details_json),
+            details=_parse_details(r.details_json),
             timestamp=r.timestamp,
         )
         for r in records
@@ -82,7 +98,7 @@ def get_audit_records(
 
     return AuditListResponse(
         total_count=total,
-        limit=limit,
-        offset=offset,
+        limit=safe_limit,
+        offset=safe_offset,
         events=items,
     ).model_dump()

@@ -29,6 +29,12 @@ from app.features.definitions import FEATURE_NAMES, FEATURE_SCHEMA_VERSION
 from app.ingestion.schemas import FlowObservationRequest
 from app.safety.gate import set_emergency_disabled
 from app.storage.database import Base
+from app.storage.repositories import (
+    AlertRepository,
+    DetectionRepository,
+    MitigationRepository,
+    ObservationRepository,
+)
 
 
 @pytest.fixture
@@ -75,6 +81,8 @@ def test_4_and_5_traffic_endpoints(db_session: Session) -> None:
     ingest_res = ingest_flow_observation(req, db_session)
     assert ingest_res["status"] == "processed"
     assert ingest_res["event_id"].startswith("evt_")
+    observation = ObservationRepository(db_session).list_recent(limit=1)[0]
+    assert observation.target_ip == "192.168.1.150"
 
     summary_res = get_traffic_summary()
     assert summary_res.window_duration_seconds == 10.0
@@ -101,6 +109,75 @@ def test_7_alerts_endpoint(db_session: Session) -> None:
     assert isinstance(res.alerts, list)
 
 
+def test_alert_response_includes_observation_target_ip(db_session: Session) -> None:
+    observation = ObservationRepository(db_session).create(
+        source_id="sensor-01",
+        target_ip="192.168.1.150",
+        timestamp="2026-10-25T10:00:00Z",
+        window_seconds=10.0,
+        feature_schema_version=FEATURE_SCHEMA_VERSION,
+        features={},
+    )
+    detection = DetectionRepository(db_session).create(
+        event_id="evt-alert-target-ip",
+        observation_id=observation.id,
+        model_version="rf-1.0.0",
+        feature_schema_version=FEATURE_SCHEMA_VERSION,
+        prediction="suspicious",
+        score_type="probability",
+        score=0.9,
+        traffic_threshold_exceeded=True,
+        policy_decision="alert",
+        mitigation_mode="simulation",
+        timestamp="2026-10-25T10:00:00Z",
+    )
+    AlertRepository(db_session).create(
+        detection_id=detection.id,
+        severity="critical",
+        title="Test alert",
+        description="Test alert description",
+        source_id="sensor-01",
+        timestamp="2026-10-25T10:00:00Z",
+    )
+    legacy_observation = ObservationRepository(db_session).create(
+        source_id="sensor-02",
+        target_ip=None,
+        timestamp="2026-10-25T10:00:00Z",
+        window_seconds=10.0,
+        feature_schema_version=FEATURE_SCHEMA_VERSION,
+        features={},
+    )
+    legacy_detection = DetectionRepository(db_session).create(
+        event_id="evt-alert-target-ip-legacy",
+        observation_id=legacy_observation.id,
+        model_version="rf-1.0.0",
+        feature_schema_version=FEATURE_SCHEMA_VERSION,
+        prediction="suspicious",
+        score_type="probability",
+        score=0.9,
+        traffic_threshold_exceeded=True,
+        policy_decision="alert",
+        mitigation_mode="simulation",
+        timestamp="2026-10-25T10:00:00Z",
+    )
+    AlertRepository(db_session).create(
+        detection_id=legacy_detection.id,
+        severity="warning",
+        title="Legacy alert",
+        description="No target IP was stored",
+        source_id="sensor-02",
+        timestamp="2026-10-25T10:00:00Z",
+    )
+
+    response = list_alerts(
+        db_session, severity=None, status=None, limit=50, offset=0
+    )
+    alerts_by_title = {alert.title: alert for alert in response.alerts}
+
+    assert alerts_by_title["Test alert"].target_ip == "192.168.1.150"
+    assert alerts_by_title["Legacy alert"].target_ip is None
+
+
 def test_8_to_11_mitigations_endpoints(db_session: Session) -> None:
     """Contract: GET /api/v1/mitigations, POST simulate, cancel, disable."""
     # 1. Simulate
@@ -123,6 +200,26 @@ def test_8_to_11_mitigations_endpoints(db_session: Session) -> None:
     # 3. Cancel
     cancel_res = cancel_mitigation(action_id, db_session)
     assert cancel_res["status"] == "cancelled"
+
+    # Simulator-created mitigations are stored as active and must also be cancellable.
+    active_mitigation = MitigationRepository(db_session).create(
+        detection_id=None,
+        target_ip="10.0.0.60",
+        target_port=80,
+        action_type="rate_limit",
+        rate_limit_pps=1000,
+        duration_seconds=60,
+        status="active",
+        mode="simulation",
+    )
+    active_cancel_res = cancel_mitigation(active_mitigation.action_id, db_session)
+    assert active_cancel_res["status"] == "cancelled"
+    assert (
+        MitigationRepository(db_session)
+        .get_by_action_id(active_mitigation.action_id)
+        .status
+        == "cancelled"
+    )
 
     # 4. Emergency disable
     try:

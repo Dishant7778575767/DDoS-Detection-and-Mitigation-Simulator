@@ -140,8 +140,14 @@ def run_generator(
             status, body, elapsed = send_flow(api_url, token, payload)
             if status == 201:
                 det = body.get("detection", {})
-                pol_decision = body.get("policy_decision") or det.get("policy_decision", "unknown")
-                ml_score = body.get("score") if body.get("score") is not None else det.get("score", 0.0)
+                pol_decision = body.get("policy_decision") or det.get(
+                    "policy_decision", "unknown"
+                )
+                ml_score = (
+                    body.get("score")
+                    if body.get("score") is not None
+                    else det.get("score", 0.0)
+                )
                 alert_created = body.get("alert_created", bool(body.get("alert_id")))
                 matches_policy = pol_decision == scenario["expected_policy"]
 

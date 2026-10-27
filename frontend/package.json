@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
@@ -27,7 +27,8 @@
     "typescript": "5.9.3"
   },
   "allowScripts": {
-    "eslint@10.13.0": true
+    "eslint@10.13.0": true,
+    "unrs-resolver@1.12.2": true
   },
   "optionalDependencies": {
     "@next/swc-linux-x64-gnu": "^16.4.3",

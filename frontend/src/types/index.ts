@@ -4,6 +4,7 @@ export * from "./alerts";
 export * from "./mitigation";
 export * from "./config";
 export * from "./audit";
+export * from "./simulation";
 
 export interface HealthResponse {
   status: string;

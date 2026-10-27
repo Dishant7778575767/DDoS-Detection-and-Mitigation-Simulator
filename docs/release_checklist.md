@@ -2,120 +2,120 @@
 
 ## 1. Overview
 
-This checklist serves as the formal release and readiness gate for SENTRIX. All items must be verified and checked off prior to tagging a release candidate.
+This checklist is the final gate before a SENTRIX release. Every item must be checked before tagging a release candidate.
 
 ---
 
 ## 2. Phase-by-Phase Readiness Gates
 
-### Phase 1 — Foundation & Skeleton Gate
-- [x] Python dependencies declared in `backend/pyproject.toml` with pinned minimum versions.
-- [x] Configuration loading enforces required variables (`APP_ENV`, `MITIGATION_MODE`, `API_AUTH_REQUIRED`).
-- [x] Minimal `GET /api/v1/health` endpoint protected by Bearer token authentication.
-- [x] Database migration framework (`alembic`) initializes repeatable schema.
-- [x] Hosted CI workflow (`.github/workflows/ci.yml`) is green.
+### Phase 1: Foundation & Skeleton Gate
 
-### Phase 2 — Data & ML Baseline Gate
-- [x] CIC-DDoS2019 dataset validated, cleaned, and deterministically partitioned (60/20/20 train/val/test).
-- [x] Shared feature schema `v1.0.0` defined with exact 14 features in `backend/app/features/definitions.py`.
-- [x] Both Random Forest and Isolation Forest candidates trained and evaluated on held-out test split.
+- [x] Python dependencies listed in `backend/pyproject.toml` with pinned minimum versions.
+- [x] Config loading requires `APP_ENV`, `MITIGATION_MODE`, and `API_AUTH_REQUIRED`.
+- [x] Basic `GET /api/v1/health` endpoint protected by Bearer token.
+- [x] Database migrations (`alembic`) create the schema the same way every time.
+- [x] CI workflow (`.github/workflows/ci.yml`) is green.
+
+### Phase 2: Data & ML Baseline Gate
+
+- [x] CIC-DDoS2019 dataset checked, cleaned, and split the same way every time (60/20/20 train/val/test).
+- [x] Shared feature schema `v1.0.0` defined with exactly 14 features in `backend/app/features/definitions.py`.
+- [x] Random Forest and Isolation Forest both trained and tested on the held-out test split.
 - [x] Random Forest approved (F1: 99.989%, Precision: 99.995%, Recall: 99.982%, FPR: 0.58%, Latency: 6.56 ms).
-- [x] Isolation Forest rejected due to high benign false-positive rate (53.31% FPR).
-- [x] Evaluation evidence documented in `docs/model_evaluation_report.md`.
-- [x] Approved artifact exported to `models/approved_model.joblib` with metadata.
+- [x] Isolation Forest rejected because of high false positives on benign traffic (53.31% FPR).
+- [x] Evaluation evidence written in `docs/model_evaluation_report.md`.
+- [x] Approved model exported to `models/approved_model.joblib` with metadata.
 
-### Phase 3 — Backend, Detection & Policy Gate
-- [x] SQLAlchemy domain models and repositories implemented for all entities.
-- [x] Ingestion pipeline enforces UTC ISO 8601 timestamps, finite numbers, and schema version checking.
-- [x] Dual-signal hybrid policy strictly separates ML signals from traffic volume thresholds.
-- [x] Fail-closed Safety Gate enforces allowlists, rate bounds (100–50,000 pps), duration bounds (10–300s), and concurrency limits (max 100).
-- [x] Mitigation lifecycle state machine enforces valid state transitions (`proposed`, `simulated`, `cancelled`, `expired`).
-- [x] All 14 PRD Section 7 REST API endpoints implemented and contract-tested.
+### Phase 3: Backend, Detection & Policy Gate
 
-### Phase 4 — Dashboard Gate
-- [x] Next.js 16+ frontend configured with TypeScript, Tailwind CSS, and Recharts.
-- [x] All 5 core views implemented: Overview, Alerts Feed, Mitigation Control Room, History Audit Trail, and Settings.
-- [x] Dark cybersecurity theme (`#050B14` + `#00E5FF` electric cyan) applied consistently.
-- [x] Live polling hook handles loading, error, stale data, and disconnected server states gracefully.
-- [x] Emergency Disable kill-switch and action cancellation controls functional with confirmations.
+- [x] SQLAlchemy models and repositories built for all entities.
+- [x] Ingestion pipeline checks UTC ISO 8601 timestamps, finite numbers, and schema version.
+- [x] Dual-signal policy keeps ML signals and traffic thresholds separate.
+- [x] Fail-closed Safety Gate enforces allowlists, rate bounds (100 to 50,000 pps), duration bounds (10 to 300s), and concurrency limit (max 100).
+- [x] Mitigation state machine allows only valid transitions (`proposed`, `simulated`, `cancelled`, `expired`).
+- [x] All 14 PRD Section 7 REST API endpoints built and contract-tested.
+
+### Phase 4: Dashboard Gate
+
+- [x] Next.js 16+ frontend set up with TypeScript, Tailwind CSS, and Recharts.
+- [x] All 5 core views built: Overview, Alerts Feed, Mitigation Control Room, History Audit Trail, and Settings.
+- [x] Dark cybersecurity theme (`#050B14` with `#00E5FF` electric cyan) used everywhere.
+- [x] Live polling handles loading, error, stale data, and server-down states.
+- [x] Emergency Disable switch and cancel controls work, with confirmation prompts.
 - [x] Frontend passes `npm run lint` and `npm run typecheck` with 0 errors.
 
-### Phase 5 — Simulation & Integration Gate
-- [x] Bounded synthetic traffic generator implemented (`scripts/send_test_traffic.py`).
-- [x] Prepared-file CSV replay implemented (`scripts/replay_dataset.py`).
-- [x] Both tools route through runtime API ingestion (`POST /api/v1/traffic/flows`) and carry demonstration tags (`demo-generator:`, `demo-replay:`).
+### Phase 5: Simulation & Integration Gate
+
+- [x] Bounded synthetic traffic generator built (`scripts/send_test_traffic.py`).
+- [x] CSV replay tool built (`scripts/replay_dataset.py`).
+- [x] Both tools send data through the runtime API (`POST /api/v1/traffic/flows`) and carry demo tags (`demo-generator:`, `demo-replay:`).
 - [x] PRD Section 10.2 integration test cases verified:
-  - TC-01: Normal traffic -> `monitor`
-  - TC-02: Abnormal burst -> `alert` (threshold only)
-  - TC-03: Suspected SYN flood -> `request_mitigation` (dual signal)
-  - TC-04: Threshold only -> `alert` only (mitigation never initiated)
-  - TC-05: Invalid schema / features rejected (422)
-  - TC-06: Protected infrastructure targets rejected by safety gate (400)
-  - TC-07: Repeated alerts cooldown deduplication verified
-  - TC-11: Unauthorized operator requests rejected (401)
-  - TC-13: 4-Quadrant hybrid decision matrix verified
-  - TC-14: Generator and file replay parity verified
+  - TC-01: Normal traffic → `monitor`
+  - TC-02: Abnormal burst → `alert` (threshold only)
+  - TC-03: Suspected SYN flood → `request_mitigation` (dual signal)
+  - TC-04: Threshold only → `alert` only (mitigation never starts)
+  - TC-05: Invalid schema or features rejected (422)
+  - TC-06: Protected infrastructure targets rejected by Safety Gate (400)
+  - TC-07: Repeated alert cooldown and deduplication verified
+  - TC-11: Unauthorized requests rejected (401)
+  - TC-13: 4-quadrant decision matrix verified
+  - TC-14: Generator and file replay give the same results
   - TC-15: Cancellation and Emergency Disable verified
-  - TC-16: Lifecycle invalid transition rejection and audit verified
-- [x] TC-08 Simulation Safety Proof: verified zero OS networking or firewall modifications occur.
-- [x] Reliability & Performance benchmarks recorded in `data/fixtures/benchmark_evidence.json`:
+  - TC-16: Invalid lifecycle transitions rejected and audited
+- [x] TC-08 Simulation Safety Proof: zero OS networking or firewall changes happen.
+- [x] Reliability and performance benchmarks saved in `data/fixtures/benchmark_evidence.json`:
   - Inference latency mean: `8.17 ms` (Target: `< 10.0 ms`)
   - Peak memory growth: `0.67 MB` (Target: `< 512.0 MB`)
-- [x] Entire backend test suite passes: **56 / 56 tests passing**.
+- [x] Full backend test suite passes: **56 / 56 tests**.
 
-### Phase 6 — Isolated Linux Lab Gate
-- [x] Lab network architecture and isolation boundary documented in `enforcement/README.md` (`sentrix0`, `10.200.0.0/24`).
-- [x] Formal signed approval manifest implemented in `enforcement/approval.json`.
-- [x] Privileged enforcement agent implemented in `enforcement/agent.py` using parameterized `nftables` commands.
-- [x] Comment-based tagging (`sentrix:<action_id>`) ensures zero touch on non-SENTRIX firewall rules.
-- [x] TTL expiration manager implemented in `enforcement/expiry.py`.
-- [x] Lab adapter implemented in `backend/app/mitigation/linux_lab.py`.
-- [x] Service restart reconciliation engine implemented in `backend/app/mitigation/reconcile.py`.
-- [x] Troubleshooting & recovery runbook documented in `enforcement/recovery.md`.
-- [x] Automated integration test suite `backend/tests/test_cases/test_tc09_tc10_tc12_linux_lab.py` verified:
-  - TC-09: Rule expiration & verified removal.
-  - TC-10: Cleanup failure, fail-closed emergency lockdown & procedural recovery.
-  - TC-12: Service restart reconciliation, orphaned rule pruning & missing rule lockdown.
-  - Subnet boundaries (`10.200.0.0/24`) and parameter bounds enforcement.
-- [x] Real-time telemetry probe collector implemented in `collector/lab_collector.py` with adaptive multi-platform fallback mode.
+### Phase 6: Scope Cleanup & Legacy Lab Removal Gate
 
-### Phase 7 — Release Hardening Gate
-- [x] Automated security hardening test suite implemented in `backend/tests/test_cases/test_phase7_security_and_hardening.py`.
-- [x] Default configuration invariance verified: `MITIGATION_MODE=simulation`, `API_AUTH_REQUIRED=true`, `SecretStr` masking.
-- [x] Standard error envelope sanitization verified: `{ "error": { "code", "message", "request_id" } }` without internal stack-trace or file path exposure.
-- [x] Sensitive IP allowlists verified against poisoning / bypass attacks (`127.0.0.1`, `::1`, default gateways, public DNS).
-- [x] Extreme parameter boundary attacks fail closed (negative/excessive pps, duration overflow).
-- [x] Audit log immutability and lifecycle DAG state machine transition rules verified.
-- [x] Subprocess isolation verified: zero OS networking commands invoked in simulation mode.
-- [x] Full test suite passing: **76 / 76 automated backend tests passing** with 0 failures and 0 warnings.
-- [x] Formal release decision and gate evidence document published in `docs/release_decision.md`.
+- [x] Legacy Linux-lab enforcement implementation (`enforcement/`, `collector/lab_collector.py`, `backend/app/mitigation/linux_lab.py`, `backend/app/mitigation/reconcile.py`) removed.
+- [x] Signed lab approval manifests, subnet dependencies (`sentrix0`, `10.200.0.0/24`), and host firewall execution paths removed.
+- [x] Automated virtual lifecycle test suite in `backend/tests/test_cases/test_tc09_tc10_tc12_virtual_lifecycle.py` verified:
+  - TC-09: Virtual mitigation expiry and confirmed status transition without OS alterations.
+  - TC-10: Emergency lockdown, fail-closed safety gate rejection, and failure auditing.
+  - TC-12: Simulator restart reconciliation and virtual expiration of in-flight actions.
+- [x] `MITIGATION_MODE` removed from backend settings; simulation engine is the exclusive, pure simulation path.
+
+### Phase 7: Release Hardening Gate
+
+- [x] Automated security test suite built in `backend/tests/test_cases/test_phase7_security_and_hardening.py`.
+- [x] Default config checked: `MITIGATION_MODE=simulation`, `API_AUTH_REQUIRED=true`, `SecretStr` masking.
+- [x] Error envelope checked: `{ "error": { "code", "message", "request_id" } }` with no stack trace or file path leaks.
+- [x] Sensitive IP allowlists tested against bypass attacks (`127.0.0.1`, `::1`, default gateways, public DNS).
+- [x] Extreme parameter attacks fail closed (negative or too-large pps, duration overflow).
+- [x] Audit log immutability and lifecycle state transition rules verified.
+- [x] Subprocess isolation verified: no OS networking commands run in simulation mode.
+- [x] Full test suite passing: **76 / 76 backend tests** with 0 failures and 0 warnings.
+- [x] Formal release decision and gate evidence published in `docs/release_decision.md`.
 
 ---
 
 ## 3. Security & Safety Checklist
 
-- [x] **Default Safe Mode**: `MITIGATION_MODE` is strictly set to `simulation`.
-- [x] **No Public Enforcement**: Linux `nftables`/`tc` enforcement remains disabled outside approved lab.
-- [x] **Credential Protection**: `.env` is git-ignored; no production secrets or hardcoded passwords exist in repo.
-- [x] **Error Envelope Sanitization**: API errors return structured envelope `{ "error": { "code", "message", "request_id" } }` without stack trace leakage.
-- [x] **Immutable Audit Logging**: All sensitive actions and lifecycle transitions create unmodifiable records in `audit_events`.
-- [x] **Allowlist Integrity**: `127.0.0.1`, `::1`, default gateways, and public DNS resolvers cannot be targeted for rate-limiting.
+- [x] **Safe by default:** Engine operates strictly in pure simulation.
+- [x] **No network mutation:** No host networking, firewall, or socket calls exist in the runtime path.
+- [x] **Credential protection:** `.env` is git-ignored. No production secrets or hardcoded passwords in the repo.
+- [x] **Error envelope sanitization:** API errors use `{ "error": { "code", "message", "request_id" } }` with no stack trace leaks.
+- [x] **Immutable audit logging:** All sensitive actions and lifecycle changes create unchangeable records in `audit_events`.
+- [x] **Allowlist integrity:** `127.0.0.1`, `::1`, default gateways, and public DNS servers cannot be rate-limited.
 
 ---
 
 ## 4. Code Quality & Formatting Gate
 
-Verify all checks pass before tagging:
+Check that all of these pass before tagging:
 
 ```powershell
-# 1. Backend Lint & Format
+# 1. Backend lint and format
 python -m ruff check
 python -m ruff format --check
 
-# 2. Automated Test Suite
+# 2. Automated test suite
 python -m pytest backend/tests -v
 
-# 3. Frontend Quality Checks
+# 3. Frontend quality checks
 npm --prefix frontend run lint
 npm --prefix frontend run typecheck
 npm --prefix frontend run build
@@ -125,24 +125,22 @@ npm --prefix frontend run build
 
 ## 5. Documentation Verification
 
-- [x] `README.md`: System overview, quick start, architecture, test instructions, and status.
-- [x] `PRD.md`: Traceability to requirements and Section 10.2 test specifications.
+- [x] `README.md`: Overview, quick start, architecture, test steps, and status.
+- [x] `PRD.md`: Links to requirements and Section 10.2 test specs.
 - [x] `IMPLEMENTATION_PLAN.md`: Phase status and exit gate criteria.
 - [x] `docs/api_schemas.md`: Full specification of all 14 endpoint contracts.
-- [x] `docs/model_evaluation_report.md`: Complete dataset, split, model comparison, and selection evidence.
-- [x] `docs/operations.md`: Day-to-day operating procedures, tool usage, and policy rules.
+- [x] `docs/model_evaluation_report.md`: Dataset, split, model comparison, and selection evidence.
+- [x] `docs/operations.md`: Daily operating steps, tool usage, and policy rules.
 - [x] `docs/recovery.md`: Emergency disable recovery, restart reconciliation, and runbooks.
 - [x] `docs/release_checklist.md`: Quality gates and readiness checklist.
-- [x] `docs/release_decision.md`: Formal release decision, gate evidence, accepted deviations, and sign-off matrix.
-- [x] `enforcement/README.md`: Isolated lab architecture, namespace, and threat model.
-- [x] `enforcement/recovery.md`: TC-10 cleanup failure and TC-12 restart recovery runbooks.
+- [x] `docs/release_decision.md`: Formal release decision, gate evidence, accepted deviations, and sign-off table.
 
 ---
 
 ## 6. Formal Sign-Off
 
 | Role | Name | Status | Date |
-| :--- | :--- | :---: | :--- |
+| :-- | :-- | :-: | :-- |
 | **System Lead** | SENTRIX Core Team | Approved | 2026-10-26 |
 | **ML Lead** | Machine Learning Team | Approved | 2026-10-25 |
 | **Security & Safety** | Safety Gate Reviewer | Approved (Lab & Simulation) | 2026-10-26 |

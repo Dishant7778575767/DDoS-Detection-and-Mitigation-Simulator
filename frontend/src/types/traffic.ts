@@ -27,17 +27,30 @@ export interface FlowObservationResponse {
 export interface TrafficSeriesPoint {
   time: string;
   pps: number;
-  syn_pps: number;
-  bps: number;
+  syn_pps?: number;
+  attack_pps?: number;
+  normal_pps?: number;
+  bps?: number;
 }
 
 export interface TrafficSummaryResponse {
-  total_flows: number;
-  recent_flows_10s: number;
-  recent_flows_30s: number;
-  avg_fwd_pps: number;
-  avg_syn_pps: number;
-  target_breakdown: Record<string, number>;
+  // Legacy & Sliding Window Backend Fields
+  window_duration_seconds?: number;
+  observation_count?: number;
+  packet_rate?: number;
+  byte_rate?: number;
+  syn_rate?: number;
+  syn_ack_ratio?: number;
+  unique_sources?: number;
+  is_burst?: boolean;
+
+  // Overview Dashboard Mapped Fields
+  total_flows?: number;
+  recent_flows_10s?: number;
+  recent_flows_30s?: number;
+  avg_fwd_pps?: number;
+  avg_syn_pps?: number;
+  target_breakdown?: Record<string, number>;
   time_series?: TrafficSeriesPoint[];
 }
 

@@ -52,6 +52,7 @@ def process_flow_pipeline(
         window_seconds=window_seconds,
         feature_schema_version=feature_schema_version,
         features=features,
+        target_ip=target_ip,
     )
 
     # 2. Update window metrics
@@ -120,13 +121,20 @@ def process_flow_pipeline(
 
     # 5. Alert generation if single or dual signal
     if policy_decision.action in ("alert", "request_mitigation"):
-        severity = (
-            "critical" if policy_decision.action == "request_mitigation" else "warning"
-        )
+        score = prediction.score or 0.0
+        if policy_decision.action == "request_mitigation" or score >= 0.85 or packet_rate > 20000:
+            severity = "critical"
+        elif score >= 0.65 or packet_rate > 8000:
+            severity = "high"
+        elif score >= 0.40 or packet_rate > 2000:
+            severity = "medium"
+        else:
+            severity = "low"
+
         title = (
-            "DDoS Attack Pattern Detected"
+            f"DDoS Attack Pattern Detected ({severity.upper()})"
             if policy_decision.action == "request_mitigation"
-            else "Anomalous Traffic Signal"
+            else f"Anomalous Traffic Signal ({severity.upper()})"
         )
         description = "; ".join(policy_decision.reasons)
         alert_obj = alert_repo.create(
@@ -151,10 +159,11 @@ def process_flow_pipeline(
         )
 
     # 6. Safety Gate and Simulation if mitigation requested
-    if policy_decision.action == "request_mitigation" and target_ip:
+    effective_target = target_ip or "192.168.1.100"
+    if policy_decision.action == "request_mitigation":
         active_count = mit_repo.count_filtered(status="simulated")
         safety_check = validate_safety_gate(
-            target_ip=target_ip,
+            target_ip=effective_target,
             rate_limit_pps=1000,
             duration_seconds=60,
             current_active_count=active_count,
@@ -165,7 +174,7 @@ def process_flow_pipeline(
             validate_lifecycle_transition("proposed", "simulated")
             mitigation_obj = mit_repo.create(
                 detection_id=detection.id,
-                target_ip=target_ip,
+                target_ip=effective_target,
                 target_port=target_port,
                 action_type="rate_limit",
                 rate_limit_pps=1000,
@@ -175,7 +184,7 @@ def process_flow_pipeline(
             )
             sim_res = simulation_adapter.apply_rate_limit(
                 action_id=mitigation_obj.action_id,
-                target_ip=target_ip,
+                target_ip=effective_target,
                 rate_limit_pps=1000,
                 duration_seconds=60,
             )

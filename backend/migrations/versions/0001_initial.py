@@ -139,9 +139,7 @@ def upgrade() -> None:
         "threshold_configs",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("version", sa.String(32), nullable=False, unique=True),
-        sa.Column(
-            "is_active", sa.Boolean(), nullable=False, server_default=sa.true()
-        ),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("pps_threshold", sa.Float(), nullable=False, server_default="5000.0"),
         sa.Column(
             "bps_threshold", sa.Float(), nullable=False, server_default="10000000.0"

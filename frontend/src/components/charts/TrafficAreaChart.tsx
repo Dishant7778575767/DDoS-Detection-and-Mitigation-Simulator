@@ -17,52 +17,82 @@ interface TrafficAreaChartProps {
 
 export function TrafficAreaChart({ data }: TrafficAreaChartProps) {
   return (
-    <div className="h-72 w-full">
+    <div className="h-72 w-full font-mono">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
           <defs>
-            <linearGradient id="ppsGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#00e5ff" stopOpacity={0.35} />
-              <stop offset="95%" stopColor="#00e5ff" stopOpacity={0.0} />
+            <linearGradient id="normalGreenGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#00FF9D" stopOpacity={0.4} />
+              <stop offset="95%" stopColor="#00FF9D" stopOpacity={0.0} />
             </linearGradient>
-            <linearGradient id="synGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.4} />
-              <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.0} />
+            <linearGradient id="attackRedGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#EF4444" stopOpacity={0.45} />
+              <stop offset="95%" stopColor="#EF4444" stopOpacity={0.0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(56, 189, 248, 0.1)" />
-          <XAxis dataKey="time" stroke="#64748b" tick={{ fontSize: 11 }} />
-          <YAxis stroke="#64748b" tick={{ fontSize: 11 }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(75, 85, 99, 0.2)" />
+          <XAxis dataKey="time" stroke="#9CA3AF" tick={{ fontSize: 10 }} />
+          <YAxis stroke="#9CA3AF" tick={{ fontSize: 10 }} />
           <Tooltip
-            contentStyle={{
-              backgroundColor: "#0a1628",
-              borderColor: "rgba(0, 229, 255, 0.3)",
-              borderRadius: "0.5rem",
-              fontSize: "12px",
-              color: "#f0f6fc",
+            content={({ active, payload, label }) => {
+              if (active && payload && payload.length) {
+                const item = payload[0]?.payload;
+                const normal = item.normal_pps ?? item.pps ?? 0;
+                const attack = item.attack_pps ?? item.syn_pps ?? 0;
+                const total = normal + attack;
+                const isAttack = attack > 0;
+                return (
+                  <div className="bg-[rgba(31,41,55,0.95)] border border-[rgba(75,85,99,0.4)] backdrop-blur-xl rounded-lg p-3 text-xs shadow-2xl space-y-1.5 font-mono">
+                    <div className="font-bold text-gray-200 border-b border-[rgba(75,85,99,0.3)] pb-1 flex items-center justify-between gap-4">
+                      <span>TIME: {label}</span>
+                      <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded border ${
+                        isAttack
+                          ? "bg-[rgba(239,68,68,0.2)] text-[#EF4444] border-red-500/40"
+                          : "bg-[rgba(0,255,157,0.15)] text-[#00FF9D] border-[#00FF9D]/40"
+                      }`}>
+                        {isAttack ? "⚠️ DDoS Attack Detected" : "✅ 100% Benign"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-4 text-[#00FF9D]">
+                      <span>Normal Visitors:</span>
+                      <strong>{Number(normal).toLocaleString()} PPS</strong>
+                    </div>
+                    <div className="flex justify-between gap-4 text-[#EF4444]">
+                      <span>Attack Traffic:</span>
+                      <strong>{Number(attack).toLocaleString()} PPS</strong>
+                    </div>
+                    <div className="flex justify-between gap-4 text-gray-100 border-t border-[rgba(75,85,99,0.3)] pt-1 text-[11px]">
+                      <span>Total Flow Volume:</span>
+                      <strong>{Number(total).toLocaleString()} PPS</strong>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
             }}
           />
+          {/* Normal Traffic Area in Matrix Neon Green */}
           <Area
             type="monotone"
-            dataKey="pps"
-            stroke="#00e5ff"
+            dataKey="normal_pps"
+            stroke="#00FF9D"
             strokeWidth={2}
             fillOpacity={1}
-            fill="url(#ppsGradient)"
-            name="Forward PPS"
+            fill="url(#normalGreenGradient)"
+            name="Normal Visitors (Benign PPS)"
           />
+          {/* Attack Traffic Area in Bright Alert Red */}
           <Area
             type="monotone"
-            dataKey="syn_pps"
-            stroke="#38bdf8"
+            dataKey="attack_pps"
+            stroke="#EF4444"
             strokeWidth={2}
             fillOpacity={1}
-            fill="url(#synGradient)"
-            name="SYN PPS"
+            fill="url(#attackRedGradient)"
+            name="Attack Flood (DDoS PPS)"
           />
         </AreaChart>
       </ResponsiveContainer>
     </div>
   );
 }
-

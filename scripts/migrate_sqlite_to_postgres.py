@@ -81,7 +81,9 @@ def backup_sqlite_db(source_path: Path) -> Path:
     return backup_path
 
 
-def read_sqlite_table(conn: sqlite3.Connection, table_name: str) -> list[dict[str, Any]]:
+def read_sqlite_table(
+    conn: sqlite3.Connection, table_name: str
+) -> list[dict[str, Any]]:
     """Read all rows from an SQLite table as dictionaries."""
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -96,7 +98,9 @@ def read_sqlite_table(conn: sqlite3.Connection, table_name: str) -> list[dict[st
 def normalize_database_url(url_str: str) -> tuple[str, dict[str, Any]]:
     """Normalize PostgreSQL URLs and determine appropriate driver and SSL settings."""
     cleaned = url_str.strip()
-    driver_prefix = "postgresql+psycopg2" if is_psycopg2_usable() else "postgresql+pg8000"
+    driver_prefix = (
+        "postgresql+psycopg2" if is_psycopg2_usable() else "postgresql+pg8000"
+    )
 
     if cleaned.startswith("postgres://"):
         cleaned = f"{driver_prefix}://" + cleaned[len("postgres://") :]
@@ -176,9 +180,7 @@ def migrate_data(
 
             # Query existing PostgreSQL IDs to avoid duplicate key conflicts
             try:
-                existing_ids = set(
-                    pg_session.scalars(select(model_class.id)).all()
-                )
+                existing_ids = set(pg_session.scalars(select(model_class.id)).all())
             except SQLAlchemyError:
                 existing_ids = set()
 
@@ -244,7 +246,9 @@ def migrate_data(
 
     print("=" * 70)
     if dry_run:
-        print("💡 Dry run complete. No records were written. Run without --dry-run to execute.")
+        print(
+            "💡 Dry run complete. No records were written. Run without --dry-run to execute."
+        )
         return True
     elif all_verified:
         print("🎉 SUCCESS: All tables migrated and row counts verified!")
@@ -293,9 +297,13 @@ def main() -> None:
     args = parser.parse_args()
 
     if not args.postgres_url or args.postgres_url.startswith("sqlite"):
-        print("❌ Error: A valid PostgreSQL DATABASE_URL must be provided via --postgres-url or .env.")
+        print(
+            "❌ Error: A valid PostgreSQL DATABASE_URL must be provided via --postgres-url or .env."
+        )
         print("Example:")
-        print("  python scripts/migrate_sqlite_to_postgres.py --postgres-url 'postgresql://postgres.[ref]:[pass]@aws-0-[region].pooler.supabase.com:5432/postgres'")
+        print(
+            "  python scripts/migrate_sqlite_to_postgres.py --postgres-url 'postgresql://postgres.[ref]:[pass]@aws-0-[region].pooler.supabase.com:5432/postgres'"
+        )
         sys.exit(1)
 
     success = migrate_data(

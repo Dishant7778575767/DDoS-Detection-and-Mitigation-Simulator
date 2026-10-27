@@ -27,7 +27,9 @@ def test_initial_migration_is_repeatable_and_uses_configured_database(
         revision = connection.execute(
             "SELECT version_num FROM alembic_version"
         ).fetchone()
+        columns = connection.execute("PRAGMA table_info(observations)").fetchall()
     finally:
         connection.close()
 
-    assert revision == ("0001_initial",)
+    assert revision == ("0002_observation_target_ip",)
+    assert "target_ip" in {column[1] for column in columns}

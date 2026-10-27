@@ -1,6 +1,5 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,7 +26,7 @@ class Settings(BaseSettings):
     )
 
     app_env: str = "development"
-    mitigation_mode: Literal["simulation"] = "simulation"
+    mitigation_mode: str = "simulation"
     model_path: Path = Path("models/approved_model.joblib")
     database_url: str = "sqlite:///./sentrix.db"
     api_auth_required: bool = True

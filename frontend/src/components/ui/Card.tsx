@@ -7,7 +7,7 @@ export function Card({
 }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
   return (
     <div
-      className={`rounded-xl border border-cyan-500/15 bg-[#0a1628]/90 backdrop-blur-md p-5 shadow-lg shadow-cyan-950/20 transition-all hover:border-cyan-500/30 ${className}`}
+      className={`rounded-xl border border-[rgba(75,85,99,0.3)] bg-[rgba(31,41,55,0.6)] backdrop-blur-xl p-5 shadow-xl shadow-black/40 transition-all hover:border-[rgba(0,255,157,0.3)] ${className}`}
       {...props}
     >
       {children}
@@ -21,7 +21,7 @@ export function CardHeader({
   ...props
 }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
   return (
-    <div className={`flex items-center justify-between gap-4 pb-4 border-b border-cyan-500/10 mb-4 ${className}`} {...props}>
+    <div className={`flex items-center justify-between gap-4 pb-4 border-b border-[rgba(75,85,99,0.3)] mb-4 ${className}`} {...props}>
       {children}
     </div>
   );
@@ -33,7 +33,7 @@ export function CardTitle({
   ...props
 }: HTMLAttributes<HTMLHeadingElement> & { children: ReactNode }) {
   return (
-    <h3 className={`text-base font-semibold tracking-wide text-cyan-50 flex items-center gap-2 ${className}`} {...props}>
+    <h3 className={`text-base font-semibold tracking-wide text-gray-100 flex items-center gap-2 ${className}`} {...props}>
       {children}
     </h3>
   );
@@ -45,7 +45,7 @@ export function CardDescription({
   ...props
 }: HTMLAttributes<HTMLParagraphElement> & { children: ReactNode }) {
   return (
-    <p className={`text-xs text-sky-200/60 mt-0.5 ${className}`} {...props}>
+    <p className={`text-xs text-[#9CA3AF] mt-0.5 font-sans ${className}`} {...props}>
       {children}
     </p>
   );
@@ -62,4 +62,3 @@ export function CardContent({
     </div>
   );
 }
-

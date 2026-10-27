@@ -10,6 +10,7 @@ class IllegalTransitionError(ValueError):
 VALID_TRANSITIONS: dict[str, set[str]] = {
     "proposed": {"simulated", "applied", "failed", "cancelled"},
     "simulated": {"cancelled", "expired"},
+    "active": {"cancelled", "expired"},
     "applied": {"cancelled", "expired", "recovered", "failed"},
     "failed": {"recovered"},
     "cancelled": set(),

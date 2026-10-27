@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -22,6 +23,7 @@ class AlertItem(BaseModel):
     title: str
     description: str
     source_id: str
+    target_ip: str | None
     timestamp: str
     status: str
 
@@ -36,21 +38,36 @@ class AlertsListResponse(BaseModel):
 @router.get("/alerts", response_model=AlertsListResponse)
 def list_alerts(
     session: Annotated[Session, Depends(get_db_session)],
-    severity: str | None = Query(
-        default=None, description="Filter by severity ('info', 'warning', 'critical')"
-    ),
-    status: str | None = Query(
-        default=None, description="Filter by status ('active', 'resolved')"
-    ),
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    severity: Annotated[
+        str | None,
+        Query(description="Filter by severity ('info', 'warning', 'critical')"),
+    ] = None,
+    status: Annotated[
+        str | None, Query(description="Filter by status ('active', 'resolved')")
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AlertsListResponse:
     """Return filtered and paginated alerts."""
+    safe_limit = limit.default if hasattr(limit, "default") else int(limit)
+    safe_offset = offset.default if hasattr(offset, "default") else int(offset)
+
     repo = AlertRepository(session)
     items = repo.list_filtered(
-        severity=severity, status=status, limit=limit, offset=offset
+        severity=severity, status=status, limit=safe_limit, offset=safe_offset
     )
     total = repo.count_filtered(severity=severity, status=status)
+
+    def _extract_target_ip(alert) -> str | None:
+        if alert.detection is not None and alert.detection.observation is not None:
+            if alert.detection.observation.target_ip:
+                return alert.detection.observation.target_ip
+        # Fallback to parsing IP from description text if legacy alert
+        if alert.description:
+            match = re.search(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", alert.description)
+            if match:
+                return match.group(0).rstrip(".")
+        return None
 
     alert_items = [
         AlertItem(
@@ -60,6 +77,7 @@ def list_alerts(
             title=a.title,
             description=a.description,
             source_id=a.source_id,
+            target_ip=_extract_target_ip(a),
             timestamp=a.timestamp,
             status=a.status,
         )
@@ -68,7 +86,7 @@ def list_alerts(
 
     return AlertsListResponse(
         total_count=total,
-        limit=limit,
-        offset=offset,
+        limit=safe_limit,
+        offset=safe_offset,
         alerts=alert_items,
     )

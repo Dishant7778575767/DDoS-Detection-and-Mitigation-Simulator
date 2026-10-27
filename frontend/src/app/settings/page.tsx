@@ -110,7 +110,7 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Dual-Signal Detection Bounds</CardTitle>
+            <CardTitle className="font-mono">Dual-Signal Detection Bounds</CardTitle>
             <CardDescription>
               Thresholds govern when an alert escalates to an actionable mitigation request
             </CardDescription>
@@ -118,13 +118,13 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
         </CardHeader>
         <CardContent className="space-y-6">
           {saveSuccess && (
-            <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-emerald-300 text-xs font-mono flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="p-3 rounded-lg bg-[rgba(0,255,157,0.12)] border border-[#00FF9D]/40 text-[#00FF9D] text-xs font-mono flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-[#00FF9D] shrink-0" />
               <span>{saveSuccess}</span>
             </div>
           )}
           {saveError && (
-            <div className="p-3 rounded-lg bg-rose-950/20 border border-rose-500/30 text-rose-300 text-xs font-mono">
+            <div className="p-3 rounded-lg bg-[rgba(239,68,68,0.15)] border border-red-500/40 text-[#EF4444] text-xs font-mono">
               {saveError}
             </div>
           )}
@@ -132,24 +132,25 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
           {/* Slider 1: PPS Threshold */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs font-mono">
-              <label className="text-cyan-200 font-semibold flex items-center gap-2">
-                <Zap className="w-3.5 h-3.5 text-cyan-400" />
+              <label className="text-gray-200 font-semibold flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-[#00FF9D]" />
                 Packets Per Second (PPS) Threshold:
               </label>
-              <span className="px-2 py-0.5 rounded bg-cyan-950/50 border border-cyan-500/30 text-cyan-300 font-bold">
+              <span className="px-2 py-0.5 rounded bg-[#090D16] border border-[#00FF9D]/40 text-[#00FF9D] font-bold">
                 {ppsThreshold.toLocaleString()} pps
               </span>
             </div>
             <input
+              suppressHydrationWarning
               type="range"
               min="1000"
               max="50000"
               step="500"
               value={ppsThreshold}
               onChange={(e) => setPpsThreshold(Number(e.target.value))}
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+              className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#00FF9D]"
             />
-            <div className="flex justify-between text-[10px] text-sky-200/40 font-mono">
+            <div className="flex justify-between text-[10px] text-[#9CA3AF]/60 font-mono">
               <span>Min: 1,000 pps</span>
               <span>Default: 5,000 pps</span>
               <span>Max: 50,000 pps</span>
@@ -159,24 +160,25 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
           {/* Slider 2: SYN PPS Threshold */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs font-mono">
-              <label className="text-cyan-200 font-semibold flex items-center gap-2">
-                <Activity className="w-3.5 h-3.5 text-sky-400" />
+              <label className="text-gray-200 font-semibold flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-[#06B6D4]" />
                 SYN Flood Rate Threshold:
               </label>
-              <span className="px-2 py-0.5 rounded bg-cyan-950/50 border border-cyan-500/30 text-sky-300 font-bold">
+              <span className="px-2 py-0.5 rounded bg-[#090D16] border border-[#06B6D4]/40 text-[#06B6D4] font-bold">
                 {synPpsThreshold.toLocaleString()} syn/s
               </span>
             </div>
             <input
+              suppressHydrationWarning
               type="range"
               min="50"
               max="5000"
               step="50"
               value={synPpsThreshold}
               onChange={(e) => setSynPpsThreshold(Number(e.target.value))}
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
+              className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#06B6D4]"
             />
-            <div className="flex justify-between text-[10px] text-sky-200/40 font-mono">
+            <div className="flex justify-between text-[10px] text-[#9CA3AF]/60 font-mono">
               <span>Min: 50 syn/s</span>
               <span>Default: 500 syn/s</span>
               <span>Max: 5,000 syn/s</span>
@@ -186,24 +188,25 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
           {/* Slider 3: RF Cutoff */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs font-mono">
-              <label className="text-cyan-200 font-semibold flex items-center gap-2">
-                <Activity className="w-3.5 h-3.5 text-amber-400" />
+              <label className="text-gray-200 font-semibold flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-[#F59E0B]" />
                 Random Forest Probability Cutoff:
               </label>
-              <span className="px-2 py-0.5 rounded bg-cyan-950/50 border border-cyan-500/30 text-amber-300 font-bold">
+              <span className="px-2 py-0.5 rounded bg-[#090D16] border border-amber-500/40 text-[#F59E0B] font-bold">
                 {(rfCutoff * 100).toFixed(0)}% ({rfCutoff.toFixed(2)})
               </span>
             </div>
             <input
+              suppressHydrationWarning
               type="range"
               min="0.50"
               max="0.99"
               step="0.01"
               value={rfCutoff}
               onChange={(e) => setRfCutoff(Number(e.target.value))}
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#F59E0B]"
             />
-            <div className="flex justify-between text-[10px] text-sky-200/40 font-mono">
+            <div className="flex justify-between text-[10px] text-[#9CA3AF]/60 font-mono">
               <span>Conservative: 0.50</span>
               <span>Default: 0.75</span>
               <span>High Precision: 0.95</span>
@@ -213,21 +216,22 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
           {/* Input: BPS Bandwidth Threshold */}
           <div className="space-y-2">
             <div className="flex justify-between items-center text-xs font-mono">
-              <label className="text-cyan-200 font-semibold">
+              <label className="text-gray-200 font-semibold">
                 Bandwidth Threshold (Bits/s):
               </label>
-              <span className="text-sky-300 text-xs">
+              <span className="text-[#06B6D4] text-xs">
                 {(bpsThreshold / 1000000).toFixed(1)} Mbps
               </span>
             </div>
             <input
+              suppressHydrationWarning
               type="number"
               min="1000000"
               max="100000000"
               step="1000000"
               value={bpsThreshold}
               onChange={(e) => setBpsThreshold(Number(e.target.value))}
-              className="w-full bg-[#050b14] border border-cyan-500/20 rounded-lg px-3 py-2 text-xs text-cyan-200 font-mono focus:border-cyan-400 focus:outline-none"
+              className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
             />
           </div>
 
@@ -244,11 +248,11 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
         </CardContent>
       </Card>
 
-      {/* Interactive Policy Matrix Preview */}
+      {/* Interactive Policy Decision Simulator */}
       <Card>
         <CardHeader>
           <div>
-            <CardTitle>Interactive Policy Decision Simulator</CardTitle>
+            <CardTitle className="font-mono">Interactive Policy Decision Simulator</CardTitle>
             <CardDescription>
               Drag the sliders below to test how incoming flows trigger the dual-signal matrix
             </CardDescription>
@@ -256,45 +260,47 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+            <div className="p-3 rounded-xl bg-[#090D16] border border-[rgba(75,85,99,0.3)] space-y-2">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-sky-300/70">Test Ingress Rate:</span>
-                <span className="text-cyan-300 font-bold">{testPps.toLocaleString()} pps</span>
+                <span className="text-[#9CA3AF]">Test Ingress Rate:</span>
+                <span className="text-[#00FF9D] font-bold">{testPps.toLocaleString()} pps</span>
               </div>
               <input
+                suppressHydrationWarning
                 type="range"
                 min="500"
                 max="15000"
                 step="250"
                 value={testPps}
                 onChange={(e) => setTestPps(Number(e.target.value))}
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#00FF9D]"
               />
               <div className="text-[11px] font-mono">
                 Threshold exceeded:{" "}
-                <span className={isTrafficExceeded ? "text-rose-400 font-bold" : "text-emerald-400"}>
+                <span className={isTrafficExceeded ? "text-[#EF4444] font-bold" : "text-[#10B981]"}>
                   {isTrafficExceeded ? "YES (Exceeds Limit)" : "NO (Within Limit)"}
                 </span>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+            <div className="p-3 rounded-xl bg-[#090D16] border border-[rgba(75,85,99,0.3)] space-y-2">
               <div className="flex justify-between text-xs font-mono">
-                <span className="text-sky-300/70">Test RF Threat Score:</span>
-                <span className="text-amber-300 font-bold">{(testRfScore * 100).toFixed(0)}%</span>
+                <span className="text-[#9CA3AF]">Test RF Threat Score:</span>
+                <span className="text-[#F59E0B] font-bold">{(testRfScore * 100).toFixed(0)}%</span>
               </div>
               <input
+                suppressHydrationWarning
                 type="range"
                 min="0.10"
                 max="1.00"
                 step="0.05"
                 value={testRfScore}
                 onChange={(e) => setTestRfScore(Number(e.target.value))}
-                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#F59E0B]"
               />
               <div className="text-[11px] font-mono">
                 ML signal active:{" "}
-                <span className={isMlThreat ? "text-rose-400 font-bold" : "text-emerald-400"}>
+                <span className={isMlThreat ? "text-[#EF4444] font-bold" : "text-[#10B981]"}>
                   {isMlThreat ? "YES (Threat Flagged)" : "NO (Benign)"}
                 </span>
               </div>
@@ -302,10 +308,10 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
           </div>
 
           {/* Dynamic Matrix Result */}
-          <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-950/10 flex items-center justify-between">
+          <div className="p-4 rounded-xl border border-[rgba(75,85,99,0.3)] bg-[#090D16] flex items-center justify-between">
             <div>
-              <div className="text-xs text-sky-300/60 font-mono">Calculated Hybrid Policy Outcome:</div>
-              <div className="text-sm text-cyan-50 font-semibold mt-1">{policyOutcome.text}</div>
+              <div className="text-xs text-[#9CA3AF] font-mono">Calculated Hybrid Policy Outcome:</div>
+              <div className="text-sm text-gray-100 font-semibold mt-1 font-mono">{policyOutcome.text}</div>
             </div>
             <Badge variant={policyOutcome.badge} className="text-sm px-3 py-1">
               {policyOutcome.action}
@@ -318,7 +324,7 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
 }
 
 export default function SettingsPage() {
-  const [authToken, setAuthTokenState] = useState<string>(getApiAuthToken());
+  const [authToken, setAuthTokenState] = useState<string>(() => getApiAuthToken());
   const [tokenSavedMsg, setTokenSavedMsg] = useState<string | null>(null);
 
   const fetchThresholds = useCallback(() => api.getThresholds(), []);
@@ -344,13 +350,13 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-cyan-500/15">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[rgba(75,85,99,0.3)]">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-cyan-50 flex items-center gap-3">
-            <Sliders className="w-6 h-6 text-cyan-400" />
+          <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3 font-mono">
+            <Sliders className="w-6 h-6 text-[#00FF9D]" />
             Detection & Policy Threshold Configuration
           </h1>
-          <p className="text-xs text-sky-200/60 mt-1">
+          <p className="text-xs text-[#9CA3AF] mt-1 font-sans">
             Tune dual-signal detection cutoffs, inspect ML candidate metadata, and test policy decisions
           </p>
         </div>
@@ -378,47 +384,47 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <div>
-                <CardTitle>Active Model Metadata</CardTitle>
+                <CardTitle className="font-mono">Active Model Metadata</CardTitle>
                 <CardDescription>Approved Phase 2 detection candidate</CardDescription>
               </div>
-              <Server className="w-5 h-5 text-cyan-400" />
+              <Server className="w-5 h-5 text-[#00FF9D]" />
             </CardHeader>
             <CardContent className="space-y-3 text-xs font-mono">
-              <div className="flex justify-between pb-2 border-b border-cyan-500/10">
-                <span className="text-sky-300/60">Candidate:</span>
-                <span className="text-cyan-200 font-bold">
+              <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
+                <span className="text-[#9CA3AF]">Candidate:</span>
+                <span className="text-gray-100 font-bold">
                   {modelMeta?.approved_model ? `RandomForestClassifier (${modelMeta.approved_model})` : "RandomForestClassifier (rf-1.0.0)"}
                 </span>
               </div>
-              <div className="flex justify-between pb-2 border-b border-cyan-500/10">
-                <span className="text-sky-300/60">Model Version:</span>
-                <span className="text-cyan-200">{modelMeta?.approved_model || "rf-1.0.0"}</span>
+              <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
+                <span className="text-[#9CA3AF]">Model Version:</span>
+                <span className="text-gray-200">{modelMeta?.approved_model || "rf-1.0.0"}</span>
               </div>
-              <div className="flex justify-between pb-2 border-b border-cyan-500/10">
-                <span className="text-sky-300/60">Feature Schema:</span>
-                <span className="text-cyan-200">v{modelMeta?.schema_version || "1.0.0"} (14 features)</span>
+              <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
+                <span className="text-[#9CA3AF]">Feature Schema:</span>
+                <span className="text-gray-200">v{modelMeta?.schema_version || "1.0.0"} (14 features)</span>
               </div>
-              <div className="flex justify-between pb-2 border-b border-cyan-500/10">
-                <span className="text-sky-300/60">Precision:</span>
-                <span className="text-emerald-400 font-bold">
+              <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
+                <span className="text-[#9CA3AF]">Precision:</span>
+                <span className="text-[#10B981] font-bold">
                   {activeMetrics?.precision !== undefined ? `${(activeMetrics.precision * 100).toFixed(2)}%` : "99.98%"}
                 </span>
               </div>
-              <div className="flex justify-between pb-2 border-b border-cyan-500/10">
-                <span className="text-sky-300/60">Recall:</span>
-                <span className="text-emerald-400 font-bold">
+              <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
+                <span className="text-[#9CA3AF]">Recall:</span>
+                <span className="text-[#10B981] font-bold">
                   {activeMetrics?.recall !== undefined ? `${(activeMetrics.recall * 100).toFixed(2)}%` : "99.96%"}
                 </span>
               </div>
-              <div className="flex justify-between pb-2 border-b border-cyan-500/10">
-                <span className="text-sky-300/60">False Positive Rate:</span>
-                <span className="text-emerald-400 font-bold">
+              <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
+                <span className="text-[#9CA3AF]">False Positive Rate:</span>
+                <span className="text-[#10B981] font-bold">
                   {activeMetrics?.false_positive_rate !== undefined ? `${(activeMetrics.false_positive_rate * 100).toFixed(2)}%` : "0.58%"}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sky-300/60">P95 Inference Latency:</span>
-                <span className="text-cyan-300 font-bold">
+                <span className="text-[#9CA3AF]">P95 Latency:</span>
+                <span className="text-[#00FF9D] font-bold">
                   {activeMetrics?.p95_latency_ms !== undefined ? `${activeMetrics.p95_latency_ms.toFixed(2)} ms` : "4.45 ms"}
                 </span>
               </div>
@@ -428,28 +434,32 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <div>
-                <CardTitle>Operator Bearer Token</CardTitle>
+                <CardTitle className="font-mono">Operator Bearer Token</CardTitle>
                 <CardDescription>Authentication for protected administrative API endpoints</CardDescription>
               </div>
-              <Lock className="w-5 h-5 text-amber-400" />
+              <Lock className="w-5 h-5 text-[#F59E0B]" />
             </CardHeader>
             <CardContent className="space-y-4 text-xs font-mono">
-              <p className="text-sky-200/70">
+              <p className="text-[#9CA3AF] font-sans">
                 SENTRIX enforces backend authorization. Dashboard controls supply this token with HTTP Bearer authentication.
               </p>
               <div className="space-y-2">
                 <input
+                  suppressHydrationWarning
+                  autoComplete="off"
+                  data-1p-ignore="true"
+                  data-lpignore="true"
                   type="password"
                   value={authToken}
                   onChange={(e) => setAuthTokenState(e.target.value)}
                   placeholder="Enter API token..."
-                  className="w-full bg-[#050b14] border border-cyan-500/20 rounded-lg px-3 py-2 text-xs text-cyan-200 font-mono focus:border-cyan-400 focus:outline-none"
+                  className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
                 />
                 <Button variant="outline" size="sm" onClick={handleUpdateToken} className="w-full">
                   Update Session Token
                 </Button>
                 {tokenSavedMsg && (
-                  <p className="text-[11px] text-emerald-400 text-center">{tokenSavedMsg}</p>
+                  <p className="text-[11px] text-[#00FF9D] text-center font-mono">{tokenSavedMsg}</p>
                 )}
               </div>
             </CardContent>

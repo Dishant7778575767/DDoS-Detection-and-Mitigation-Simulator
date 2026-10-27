@@ -319,6 +319,7 @@ def run_all_tests(base_url: str, token: str) -> bool:
 def main() -> None:
     # Load .env so API_AUTH_TOKEN is automatically used if present
     from dotenv import load_dotenv
+
     load_dotenv(ROOT_DIR / ".env")
 
     default_token = os.environ.get("API_AUTH_TOKEN", "dev-only-change-me")

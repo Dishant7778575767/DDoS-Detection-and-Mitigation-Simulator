@@ -19,6 +19,7 @@ class ObservationModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source_id: Mapped[str] = mapped_column(String(64), index=True)
+    target_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     timestamp: Mapped[str] = mapped_column(String(32), index=True)
     window_seconds: Mapped[float] = mapped_column(Float, default=10.0)
     feature_schema_version: Mapped[str] = mapped_column(String(16), default="1.0.0")
@@ -149,3 +150,60 @@ class AuditEventModel(Base):
     actor: Mapped[str] = mapped_column(String(64))
     details_json: Mapped[str] = mapped_column(Text)
     timestamp: Mapped[str] = mapped_column(String(32), index=True)
+
+
+class SimulationRunModel(Base):
+    """Persistent state and configuration for a simulation run."""
+
+    __tablename__ = "simulation_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    scenario_type: Mapped[str] = mapped_column(String(32), index=True)
+    scenario_version: Mapped[str] = mapped_column(String(16), default="1.0.0")
+    model_version: Mapped[str] = mapped_column(String(32), default="rf-1.0.0")
+    schema_version: Mapped[str] = mapped_column(String(16), default="1.0.0")
+    simulator_version: Mapped[str] = mapped_column(String(16), default="1.5.0")
+    seed: Mapped[int] = mapped_column(Integer)
+    total_ticks: Mapped[int] = mapped_column(Integer)
+    current_tick: Mapped[int] = mapped_column(Integer, default=0)
+    speed_multiplier: Mapped[float] = mapped_column(Float, default=1.0)
+    status: Mapped[str] = mapped_column(
+        String(32), default="created", index=True
+    )  # "created", "running", "paused", "completed", "interrupted", "cancelled"
+    config_json: Mapped[str] = mapped_column(Text)
+    scorecard_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String(32))
+    updated_at: Mapped[str] = mapped_column(String(32))
+    completed_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    ticks: Mapped[list[SimulationTickModel]] = relationship(
+        "SimulationTickModel", back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class SimulationTickModel(Base):
+    """Committed aggregate metrics and outcome for a single simulation tick."""
+
+    __tablename__ = "simulation_ticks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("simulation_runs.run_id"), index=True
+    )
+    tick: Mapped[int] = mapped_column(Integer, index=True)
+    offered_legit_pps: Mapped[float] = mapped_column(Float)
+    offered_attack_pps: Mapped[float] = mapped_column(Float)
+    served_legit_pps: Mapped[float] = mapped_column(Float)
+    dropped_legit_pps: Mapped[float] = mapped_column(Float)
+    dropped_attack_pps: Mapped[float] = mapped_column(Float)
+    latency_ms: Mapped[float] = mapped_column(Float)
+    availability_pct: Mapped[float] = mapped_column(Float)
+    prediction: Mapped[str] = mapped_column(String(32))
+    policy_action: Mapped[str] = mapped_column(String(32))
+    active_mitigations_count: Mapped[int] = mapped_column(Integer, default=0)
+    timestamp: Mapped[str] = mapped_column(String(32))
+
+    run: Mapped[SimulationRunModel] = relationship(
+        "SimulationRunModel", back_populates="ticks"
+    )

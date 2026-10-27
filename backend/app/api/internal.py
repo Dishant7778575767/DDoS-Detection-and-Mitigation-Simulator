@@ -41,4 +41,3 @@ def database_keepalive(
         database="connected",
         timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
     )
-

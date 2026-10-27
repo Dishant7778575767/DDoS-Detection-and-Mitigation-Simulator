@@ -15,6 +15,8 @@ def test_valid_lifecycle_transitions() -> None:
     validate_lifecycle_transition("proposed", "applied")
     validate_lifecycle_transition("simulated", "cancelled")
     validate_lifecycle_transition("simulated", "expired")
+    validate_lifecycle_transition("active", "cancelled")
+    validate_lifecycle_transition("active", "expired")
     validate_lifecycle_transition("applied", "cancelled")
     validate_lifecycle_transition("applied", "expired")
     validate_lifecycle_transition("applied", "recovered")

@@ -9,7 +9,6 @@ def test_defaults_use_simulation_sqlite_and_authentication(
 ) -> None:
     for name in (
         "APP_ENV",
-        "MITIGATION_MODE",
         "MODEL_PATH",
         "DATABASE_URL",
         "API_AUTH_REQUIRED",
@@ -19,7 +18,6 @@ def test_defaults_use_simulation_sqlite_and_authentication(
 
     settings = Settings(_env_file=None)
 
-    assert settings.mitigation_mode == "simulation"
     assert settings.database_url == "sqlite:///./sentrix.db"
     assert settings.api_auth_required is True
 
@@ -27,7 +25,6 @@ def test_defaults_use_simulation_sqlite_and_authentication(
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("mitigation_mode", "lab"),
         ("database_url", "mysql://localhost/sentrix"),
         ("database_url", "oracle://localhost/sentrix"),
     ],
@@ -45,7 +42,10 @@ def test_rejects_unsupported_or_unsafe_configuration(
     [
         ("sqlite:///./sentrix.db", "sqlite"),
         ("postgresql://user:pass@localhost:5432/sentrix", "postgresql"),
-        ("postgresql+psycopg2://user:pass@localhost:5432/sentrix", "postgresql+psycopg2"),
+        (
+            "postgresql+psycopg2://user:pass@localhost:5432/sentrix",
+            "postgresql+psycopg2",
+        ),
         ("postgres://user:pass@localhost:5432/sentrix", "postgresql"),
     ],
 )
@@ -56,7 +56,10 @@ def test_accepts_valid_postgresql_and_sqlite_urls(
     assert settings.database_url.startswith(expected_prefix)
 
 
-def test_authentication_default_requires_a_token_at_runtime() -> None:
+def test_authentication_default_requires_a_token_at_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
     settings = Settings(_env_file=None)
 
     with pytest.raises(ValueError, match="API_AUTH_TOKEN"):

@@ -22,7 +22,7 @@ All 8 project phases are **verified complete**:
 - **Phase 3 (Backend, Detection, and Policy):** Fully implemented SQLAlchemy domain persistence (observations, detections, alerts, mitigations, thresholds, and audit), Pydantic ingestion with UTC timestamps and range validation, runtime model inference, sliding-window traffic aggregation, dual-signal hybrid policy engine, fail-closed safety gate (enforcing allowlists, duration/rate limits, concurrency caps, and emergency disable), simulation mitigation adapter, state machine lifecycle management, and all 14 PRD Section 7 REST API endpoints. The test suite comprises 33 passing automated tests with 0 lint errors.
 - **Phase 4 (Dashboard):** Implemented all 5 core monitoring and control views (Overview with live Recharts telemetry, Alerts feed with flow inspection modal, Mitigation control room with simulation countdowns and Emergency Disable kill switch, History audit trail with CSV export, and Settings with threshold sliders, active model metadata, and an interactive policy matrix preview). Styled with an obsidian-dark cybersecurity theme (`#050B14`) and electric cyan/sky accents (`#00E5FF`). Verified with 0 ESLint and 0 TypeScript errors.
 - **Phase 5 (Simulation & Integration):** Bounded demonstration generator (`scripts/send_test_traffic.py`) and dataset replay (`scripts/replay_dataset.py`) routed through runtime pipeline with `demo-generator:` and `demo-replay:` provenance. Full integration suite verifies TC-01 to TC-07, TC-11 to TC-16, TC-08 simulation safety proof (0 host firewall or network socket changes), and reliability/performance benchmarks (mean inference latency 8.17 ms, peak memory 0.67 MB). All 56 tests pass.
-- **Phase 6 (Isolated Linux Lab):** Implemented restricted `nftables` enforcement agent (`enforcement/agent.py`), rule generator (`enforcement/rules.py`), TTL expiration tracker (`enforcement/expiry.py`), backend adapter (`backend/app/mitigation/linux_lab.py`), service restart reconciler (`backend/app/mitigation/reconcile.py`), signed approval manifest (`enforcement/approval.json`), threat model (`enforcement/README.md`), recovery runbook (`enforcement/recovery.md`), and probe collector (`collector/lab_collector.py`). Rigorously validated with automated tests for TC-09 (rule expiration & verified removal), TC-10 (cleanup failure, fail-closed emergency lockdown & procedural recovery), TC-12 (service restart reconciliation, orphaned rule pruning & missing rule fail-closed handling), and strict subnet isolation (`sentrix0`, `10.200.0.0/24`).
+- **Phase 6 (Scope Cleanup & Legacy Lab Removal):** Re-scoped platform as a web-based DDoS simulator. Removed legacy Linux-lab enforcement agent, raw telemetry collector, and signed approval requirements. Replaced with virtual lifecycle state machine and restart reconciliation tests.
 - **Phase 7 (Release Hardening):** Full security hardening review, error envelope sanitization, credential protection, allowlist defense against bypass, audit immutability, parameter boundary attack rejection, and zero OS network mutation verification in `backend/tests/test_cases/test_phase7_security_and_hardening.py` (**76 total passing backend tests**). Documentation synchronized across all operational and recovery guides. Formal release decision published in [docs/release_decision.md](docs/release_decision.md) authorizing `v0.1.0-rc1`.
 - **Phase 8 (Cloud Persistence & Supabase Migration):** Dual-dialect configuration (SQLite + Supabase PostgreSQL) with connection pre-pinging, pooling, and pure-Python `pg8000` adaptive fallback. All 6 tables successfully migrated to Supabase PostgreSQL with 100% row-count matching and sequence resynchronization. Authenticated keep-alive endpoint (`GET /internal/keepalive`) with `SELECT 1` ping and `render.yaml` deployment configuration implemented (**100 total passing backend tests**).
 
@@ -73,22 +73,16 @@ routing, traffic-control settings, or other host networking, and must not
 invoke privileged enforcement or networking-modification operations. A
 simulated action is not a network change.
 
-Linux enforcement using `nftables` and/or `tc` is a later-stage, restricted
-feature for an isolated lab. It is not a normal fallback from simulation and
-must remain disabled until simulation-safety and authorization tests,
-isolated enforcement/expiry/cleanup/restart-reconciliation tests, recovery
-checks, required release gates, and explicit lab approval are complete.
-Cleanup may affect only SENTRIX-owned resources.
+All traffic and mitigation effects are strictly virtual and simulated. No real packets are transmitted to external hosts, and no OS firewall rules or network interfaces are altered.
 
 ## Technology stack
 
 | Area | Intended technology and role |
 | --- | --- |
 | Backend | Python and FastAPI for the API and modular backend; Pydantic for request validation. |
-| Persistence | SQLite, with the planned local database filename `sentrix.db`. |
+| Persistence | SQLite for local development; Supabase PostgreSQL for cloud persistence. |
 | Machine learning | scikit-learn; Random Forest and Isolation Forest are candidate models. Planned data tooling includes pandas, NumPy, joblib, and PyYAML. |
 | Frontend | Next.js is the frontend framework; React is the UI library, with TypeScript, Tailwind CSS, and Recharts. |
-| Lab enforcement | Linux `nftables` and/or `tc` in a later, isolated lab phase only. |
 
 The Python package manifest currently lists the backend dependencies in
 [backend/pyproject.toml](backend/pyproject.toml). Frontend dependencies and
@@ -134,9 +128,6 @@ SENTRIX/
 ├── notebooks/                    # Dataset and model exploration notebooks
 ├── data/
 │   └── README.md                 # Dataset provenance, licensing, and schema 1.0.0 definition
-├── collector/
-│   └── lab_collector.py          # Live Linux interface metrics collector & lab probe (Schema 1.0.0)
-├── enforcement/                  # Restricted Linux lab nftables enforcement agent, expiry & recovery
 ├── scripts/                      # Setup and demo traffic helper scripts
 └── docs/                         # API specification, ML evaluation report, operations guides
 ```
@@ -312,7 +303,6 @@ validated.
 - [Recovery procedures](docs/recovery.md) — emergency disable recovery, restart reconciliation, and runbooks.
 - [Release checklist](docs/release_checklist.md) — phase-by-phase quality gates and verification checklist.
 - [Release decision](docs/release_decision.md) — formal release decision, gate evidence, accepted deviations, and sign-offs for v0.1.0-rc1.
-- [Lab enforcement overview](enforcement/README.md) and [lab recovery notes](enforcement/recovery.md) — isolated Linux lab architecture, nftables rules, and troubleshooting runbooks.
 
 ## Limitations
 

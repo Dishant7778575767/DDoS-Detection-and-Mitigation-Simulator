@@ -1,6 +1,8 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
 export type BadgeVariant =
+  | "matrix"
+  | "cyan"
   | "simulation"
   | "normal"
   | "warning"
@@ -15,20 +17,24 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
+  matrix:
+    "bg-[rgba(0,255,157,0.12)] text-[#00FF9D] border-[#00FF9D]/40 shadow-[0_0_10px_rgba(0,255,157,0.2)]",
+  cyan:
+    "bg-[rgba(6,182,212,0.12)] text-[#06B6D4] border-[#06B6D4]/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]",
   simulation:
-    "bg-cyan-500/10 text-cyan-300 border-cyan-500/30 shadow-[0_0_10px_rgba(0,229,255,0.15)]",
+    "bg-[rgba(6,182,212,0.12)] text-[#06B6D4] border-[#06B6D4]/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]",
   normal:
-    "bg-emerald-500/10 text-emerald-300 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]",
+    "bg-[rgba(16,185,129,0.15)] text-[#10B981] border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]",
   warning:
-    "bg-amber-500/10 text-amber-300 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.15)]",
+    "bg-[rgba(245,158,11,0.15)] text-[#F59E0B] border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]",
   critical:
-    "bg-rose-500/15 text-rose-300 border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.2)]",
+    "bg-[rgba(239,68,68,0.18)] text-[#EF4444] border-red-500/40 shadow-[0_0_10px_rgba(239,68,68,0.25)]",
   info:
-    "bg-sky-500/10 text-sky-300 border-sky-500/30 shadow-[0_0_10px_rgba(56,189,248,0.15)]",
+    "bg-[rgba(6,182,212,0.12)] text-[#06B6D4] border-[#06B6D4]/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]",
   outline:
-    "bg-transparent text-slate-300 border-slate-700",
+    "bg-[rgba(31,41,55,0.4)] text-[#9CA3AF] border-[rgba(75,85,99,0.4)]",
   stale:
-    "bg-yellow-500/10 text-yellow-400 border-yellow-500/30 animate-pulse",
+    "bg-[rgba(245,158,11,0.15)] text-[#F59E0B] border-amber-500/40 animate-pulse",
 };
 
 export function Badge({
@@ -39,11 +45,10 @@ export function Badge({
 }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border uppercase tracking-wider ${variantStyles[variant]} ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border uppercase tracking-wider ${variantStyles[variant]} ${className}`}
       {...props}
     >
       {children}
     </span>
   );
 }
-
