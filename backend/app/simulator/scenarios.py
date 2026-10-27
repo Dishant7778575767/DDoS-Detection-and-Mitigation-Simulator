@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ipaddress
 from enum import Enum
-from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -125,7 +124,7 @@ class ScenarioConfig(BaseModel):
         return cleaned
 
     @model_validator(mode="after")
-    def validate_tick_bounds(self) -> Self:
+    def validate_tick_bounds(self) -> ScenarioConfig:
         total_ticks = int(self.duration_seconds / self.tick_interval)
         if self.attack_start_tick > self.attack_end_tick:
             raise ValueError(
