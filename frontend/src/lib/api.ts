@@ -197,11 +197,11 @@ export const api = {
   },
 
   // 8, 9, 10, 11. Mitigations
-  getMitigations: (params?: { limit?: number; offset?: number; state?: string }) => {
+  getMitigations: (params?: { limit?: number; offset?: number; status?: string }) => {
     const q = new URLSearchParams();
     if (params?.limit) q.set("limit", String(params.limit));
     if (params?.offset) q.set("offset", String(params.offset));
-    if (params?.state) q.set("state", params.state);
+    if (params?.status) q.set("status", params.status);
     const qs = q.toString() ? `?${q.toString()}` : "";
     return fetchJson<MitigationListResponse>(`/api/v1/mitigations${qs}`);
   },
@@ -231,6 +231,8 @@ export const api = {
       status: string;
       latest_mitigation?: {
         action_id: string;
+        source?: "mitigation" | "simulation_run";
+        run_id?: string;
         target_ip: string;
         target_port?: number | null;
         rate_limit_pps: number;

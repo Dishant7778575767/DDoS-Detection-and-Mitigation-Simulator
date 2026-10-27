@@ -16,6 +16,14 @@ interface TrafficAreaChartProps {
 }
 
 export function TrafficAreaChart({ data }: TrafficAreaChartProps) {
+  if (data.length === 0) {
+    return (
+      <div className="flex h-72 items-center justify-center rounded-lg border border-dashed border-[rgba(75,85,99,0.3)] text-center text-xs text-[#9CA3AF]">
+        Start a simulation to view synthetic traffic over time.
+      </div>
+    );
+  }
+
   return (
     <div className="h-72 w-full font-mono">
       <ResponsiveContainer width="100%" height="100%">

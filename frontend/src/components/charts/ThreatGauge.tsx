@@ -20,7 +20,7 @@ export function ThreatGauge({ score, cutoff = 0.75, label }: ThreatGaugeProps) {
         <div
           className={`h-full rounded-full transition-all duration-300 ${
             isThreat
-              ? "bg-gradient-to-r from-[#F59E0B] to-[#EF4444] shadow-[0_0_12px_rgba(239,68,68,0.6)]"
+              ? "bg-linear-to-r from-[#F59E0B] to-[#EF4444] shadow-[0_0_12px_rgba(239,68,68,0.6)]"
               : "bg-[#00FF9D] shadow-[0_0_12px_rgba(0,255,157,0.5)]"
           }`}
           style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}

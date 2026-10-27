@@ -41,7 +41,7 @@ def _parse_details(val: Any) -> dict:
         return {}
     try:
         return json.loads(val)
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         return {"raw": str(val)}
 
 

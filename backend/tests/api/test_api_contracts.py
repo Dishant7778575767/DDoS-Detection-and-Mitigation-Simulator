@@ -169,13 +169,22 @@ def test_alert_response_includes_observation_target_ip(db_session: Session) -> N
         timestamp="2026-10-25T10:00:00Z",
     )
 
-    response = list_alerts(
-        db_session, severity=None, status=None, limit=50, offset=0
-    )
+    response = list_alerts(db_session, severity=None, status=None, limit=50, offset=0)
     alerts_by_title = {alert.title: alert for alert in response.alerts}
 
     assert alerts_by_title["Test alert"].target_ip == "192.168.1.150"
     assert alerts_by_title["Legacy alert"].target_ip is None
+
+    filtered_response = list_alerts(
+        db_session,
+        severity=None,
+        status=None,
+        limit=50,
+        offset=0,
+        target_ip=" 192.168.1.150 ",
+    )
+    assert filtered_response.total_count == 1
+    assert [alert.title for alert in filtered_response.alerts] == ["Test alert"]
 
 
 def test_8_to_11_mitigations_endpoints(db_session: Session) -> None:
@@ -214,12 +223,27 @@ def test_8_to_11_mitigations_endpoints(db_session: Session) -> None:
     )
     active_cancel_res = cancel_mitigation(active_mitigation.action_id, db_session)
     assert active_cancel_res["status"] == "cancelled"
+    repeated_cancel_res = cancel_mitigation(active_mitigation.action_id, db_session)
+    assert repeated_cancel_res["status"] == "cancelled"
     assert (
         MitigationRepository(db_session)
         .get_by_action_id(active_mitigation.action_id)
         .status
         == "cancelled"
     )
+
+    expired_mitigation = MitigationRepository(db_session).create(
+        detection_id=None,
+        target_ip="10.0.0.61",
+        target_port=80,
+        action_type="rate_limit",
+        rate_limit_pps=1000,
+        duration_seconds=60,
+        status="expired",
+        mode="simulation",
+    )
+    expired_cancel_res = cancel_mitigation(expired_mitigation.action_id, db_session)
+    assert expired_cancel_res["status"] == "expired"
 
     # 4. Emergency disable
     try:

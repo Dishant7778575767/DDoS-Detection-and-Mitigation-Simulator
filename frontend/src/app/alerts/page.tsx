@@ -97,7 +97,7 @@ export default function AlertsPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Total Threat Events"
-          value={data?.total || alerts.length}
+          value={data?.total_count ?? alerts.length}
           subtitle="All detected anomalous flows"
           icon={<Bell className="w-4 h-4 text-[#00FF9D]" />}
         />
@@ -190,7 +190,7 @@ export default function AlertsPage() {
         <CardHeader>
           <div>
             <CardTitle className="font-mono">
-              High-Density Security Incident Feed ({data?.total || alerts.length})
+              High-Density Security Incident Feed (              {data?.total_count ?? alerts.length})
             </CardTitle>
             <CardDescription>
               Select any incident row to open the interactive mitigation drawer and evaluate safety gate guardrails

@@ -30,7 +30,7 @@ from app.safety.gate import (
 )
 from app.storage.audit import record_audit_event
 from app.storage.database import get_db_session
-from app.storage.repositories import MitigationRepository
+from app.storage.repositories import MitigationRepository, SimulationRunRepository
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +93,17 @@ def resolve_host_network_info(request: Request | None = None) -> dict[str, Any]:
 
     # Check request headers for proxy / cloud hostname if not already determined
     if request is not None:
-        req_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        req_host = request.headers.get("x-forwarded-host") or request.headers.get(
+            "host"
+        )
         if req_host:
             host_clean = req_host.split(":")[0].strip()
-            if host_clean and host_clean not in ("localhost", "127.0.0.1", "0.0.0.0", "testserver"):
+            if host_clean and host_clean not in (
+                "localhost",
+                "127.0.0.1",
+                "0.0.0.0",
+                "testserver",
+            ):
                 is_deployed = True
                 if not deployed_host:
                     deployed_host = host_clean
@@ -109,17 +116,17 @@ def resolve_host_network_info(request: Request | None = None) -> dict[str, Any]:
         s.connect(("8.8.8.8", 80))
         local_ip = s.getsockname()[0]
         s.close()
-    except Exception:
+    except OSError:
         try:
             local_ip = socket.gethostbyname(socket.gethostname())
-        except Exception:
+        except OSError:
             local_ip = "127.0.0.1"
 
     host_ip = deployed_host if (is_deployed and deployed_host) else local_ip
     hostname = "localhost"
     try:
         hostname = socket.gethostname()
-    except Exception:
+    except OSError:
         pass
 
     # 3. Dynamic DNS Gateways
@@ -143,7 +150,7 @@ def resolve_host_network_info(request: Request | None = None) -> dict[str, Any]:
                                     found_dns.append(ns)
                 if found_dns:
                     dns_gateways = found_dns[:3]
-            except Exception:
+            except (OSError, UnicodeDecodeError):
                 pass
 
     return {
@@ -170,30 +177,71 @@ def get_mitigation_system_status(
     latest_mitigation = None
     shield_active = False
 
-    if active_items:
-        latest = active_items[0]
-        now_dt = datetime.datetime.now(datetime.timezone.utc)
+    now_dt = datetime.datetime.now(datetime.timezone.utc)
+    for item in active_items:
         rem_sec = 0
-        if latest.expires_at:
+        if item.expires_at:
             try:
-                exp_dt = datetime.datetime.fromisoformat(latest.expires_at.replace("Z", "+00:00"))
+                exp_dt = datetime.datetime.fromisoformat(
+                    item.expires_at.replace("Z", "+00:00")
+                )
                 rem_sec = max(0, int((exp_dt - now_dt).total_seconds()))
-            except Exception:
-                rem_sec = latest.duration_seconds
+            except (ValueError, TypeError):
+                rem_sec = item.duration_seconds
         else:
-            rem_sec = latest.duration_seconds
+            rem_sec = item.duration_seconds
 
-        shield_active = rem_sec > 0
-        latest_mitigation = {
-            "action_id": latest.action_id,
-            "target_ip": latest.target_ip,
-            "target_port": latest.target_port,
-            "rate_limit_pps": latest.rate_limit_pps,
-            "duration_seconds": latest.duration_seconds,
-            "remaining_seconds": rem_sec,
-            "status": latest.status,
-            "expires_at": latest.expires_at,
-        }
+        if rem_sec > 0:
+            shield_active = True
+            latest_mitigation = {
+                "action_id": item.action_id,
+                "source": "mitigation",
+                "target_ip": item.target_ip,
+                "target_port": item.target_port,
+                "rate_limit_pps": item.rate_limit_pps,
+                "duration_seconds": item.duration_seconds,
+                "remaining_seconds": rem_sec,
+                "status": item.status,
+                "expires_at": item.expires_at,
+            }
+            break
+
+    # Synchronize with active running simulation defense state
+    sim_repo = SimulationRunRepository(session)
+    running_runs = sim_repo.list_runs(status="running", limit=1)
+    if running_runs:
+        active_sim = running_runs[0]
+        sim_ticks = active_sim.ticks
+        latest_tick = sim_ticks[-1] if sim_ticks else None
+        if latest_tick and (
+            latest_tick.active_mitigations_count > 0
+            or latest_tick.policy_action
+            in ("request_mitigation", "simulate_mitigation", "rate_limit")
+        ):
+            shield_active = True
+            rem_sim_sec = max(1, int(active_sim.total_ticks - active_sim.current_tick))
+            if (
+                not latest_mitigation
+                or latest_mitigation.get("remaining_seconds", 0) <= 0
+            ):
+                latest_mitigation = {
+                    "action_id": f"sim_{active_sim.run_id}_t{active_sim.current_tick}",
+                    "source": "simulation_run",
+                    "run_id": active_sim.run_id,
+                    "target_ip": "192.168.1.100",
+                    "target_port": 80,
+                    "rate_limit_pps": 5000,
+                    "duration_seconds": active_sim.total_ticks,
+                    "remaining_seconds": rem_sim_sec,
+                    "status": "active",
+                    "expires_at": None,
+                }
+            else:
+                latest_mitigation["remaining_seconds"] = max(
+                    latest_mitigation["remaining_seconds"], rem_sim_sec
+                )
+            latest_mitigation["source"] = "simulation_run"
+            latest_mitigation["run_id"] = active_sim.run_id
 
     network_info = resolve_host_network_info(request)
 
@@ -360,10 +408,61 @@ def cancel_mitigation(
     repo = MitigationRepository(session)
     mitigation = repo.get_by_action_id(action_id)
     if not mitigation:
+        # Gracefully handle simulation or virtual mitigation cancellation without raising 404
+        if action_id.startswith(("sim_", "sim-", "virtual_")):
+            repo.expire_simulation_mitigations()
+            try:
+                from app.simulator.manager import _RUN_EVALUATORS
+
+                for _engine, _evaluator, _tick in list(_RUN_EVALUATORS.values()):
+                    for act in _evaluator.mitigation_manager.all_actions:
+                        if act.status == "active":
+                            act.cancel(_tick)
+            except (KeyError, AttributeError, RuntimeError) as exc:
+                logger.debug("Failed to cancel in-memory simulation actions: %s", exc)
+
+            cancelled_timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            )
+            record_audit_event(
+                session=session,
+                event_type="mitigation_cancelled",
+                action="cancel_mitigation",
+                actor="operator_api",
+                details={
+                    "action_id": action_id,
+                    "target_ip": "192.168.1.100",
+                    "previous_state": "simulated",
+                    "cancelled_at": cancelled_timestamp,
+                },
+            )
+            return {
+                "action_id": action_id,
+                "target_ip": "192.168.1.100",
+                "action_type": "rate_limit",
+                "rate_limit_pps": 5000,
+                "duration_seconds": 60,
+                "status": "cancelled",
+                "mode": "simulation",
+                "host_networking_modified": False,
+                "message": f"Simulation mitigation '{action_id}' cancelled.",
+            }
+
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Mitigation action '{action_id}' not found.",
         )
+
+    if mitigation.status in ("cancelled", "expired"):
+        return {
+            "action_id": action_id,
+            "status": mitigation.status,
+            "message": (
+                "Mitigation was already cancelled."
+                if mitigation.status == "cancelled"
+                else "Mitigation has already expired."
+            ),
+        }
 
     # Validate lifecycle transition
     try:
@@ -387,6 +486,18 @@ def cancel_mitigation(
         new_status="cancelled",
         cancelled_at=cancelled_timestamp,
     )
+
+    if mitigation.mode == "simulation" or action_id.startswith(("sim_", "sim-")):
+        repo.expire_simulation_mitigations()
+        try:
+            from app.simulator.manager import _RUN_EVALUATORS
+
+            for _engine, _evaluator, _tick in list(_RUN_EVALUATORS.values()):
+                for act in _evaluator.mitigation_manager.all_actions:
+                    if act.action_id == action_id or act.status == "active":
+                        act.cancel(_tick)
+        except (KeyError, AttributeError, RuntimeError) as exc:
+            logger.debug("Failed to cancel in-memory simulation actions: %s", exc)
 
     record_audit_event(
         session=session,

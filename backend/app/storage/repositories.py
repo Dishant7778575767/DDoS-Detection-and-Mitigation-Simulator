@@ -162,7 +162,9 @@ class AlertRepository:
 
     def resolve_inactive_simulation_alerts(self) -> int:
         """Automatically resolve alerts from simulations that have completed, cancelled, or are no longer actively running."""
-        active_runs_stmt = select(SimulationRunModel.run_id).where(SimulationRunModel.status == "running")
+        active_runs_stmt = select(SimulationRunModel.run_id).where(
+            SimulationRunModel.status == "running"
+        )
         running_run_ids = list(self.session.scalars(active_runs_stmt).all())
 
         stmt = (
@@ -189,6 +191,7 @@ class AlertRepository:
         status: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        target_ip: str | None = None,
     ) -> list[AlertModel]:
         self.resolve_inactive_simulation_alerts()
         stmt = select(AlertModel)
@@ -202,6 +205,14 @@ class AlertRepository:
                 stmt = stmt.where(func.lower(AlertModel.severity) == sev_clean)
         if status:
             stmt = stmt.where(AlertModel.status == status)
+        if target_ip:
+            stmt = stmt.where(
+                AlertModel.detection.has(
+                    DetectionModel.observation.has(
+                        func.lower(ObservationModel.target_ip) == target_ip.lower()
+                    )
+                )
+            )
         stmt = stmt.order_by(desc(AlertModel.id)).offset(offset).limit(limit)
         return list(self.session.scalars(stmt).all())
 
@@ -209,6 +220,7 @@ class AlertRepository:
         self,
         severity: str | None = None,
         status: str | None = None,
+        target_ip: str | None = None,
     ) -> int:
         self.resolve_inactive_simulation_alerts()
         stmt = select(func.count(AlertModel.id))
@@ -222,6 +234,14 @@ class AlertRepository:
                 stmt = stmt.where(func.lower(AlertModel.severity) == sev_clean)
         if status:
             stmt = stmt.where(AlertModel.status == status)
+        if target_ip:
+            stmt = stmt.where(
+                AlertModel.detection.has(
+                    DetectionModel.observation.has(
+                        func.lower(ObservationModel.target_ip) == target_ip.lower()
+                    )
+                )
+            )
         return self.session.scalar(stmt) or 0
 
 
@@ -235,7 +255,9 @@ class MitigationRepository:
         stmt = (
             update(MitigationModel)
             .where(
-                MitigationModel.status.in_(["proposed", "simulated", "active", "applied"]),
+                MitigationModel.status.in_(
+                    ["proposed", "simulated", "active", "applied"]
+                ),
                 MitigationModel.expires_at.is_not(None),
                 MitigationModel.expires_at <= now_iso,
             )
@@ -335,10 +357,36 @@ class MitigationRepository:
             stmt = stmt.where(MitigationModel.mode == mode)
         return self.session.scalar(stmt) or 0
 
+    def expire_simulation_mitigations(self) -> int:
+        """Expire all active or simulated mitigations that were created by the simulator."""
+        now_iso = _current_timestamp()
+        stmt = (
+            update(MitigationModel)
+            .where(
+                MitigationModel.mode == "simulation",
+                MitigationModel.status.in_(
+                    ["proposed", "simulated", "active", "applied"]
+                ),
+            )
+            .values(
+                status="expired",
+                updated_at=now_iso,
+            )
+        )
+        res = self.session.execute(stmt)
+        if res.rowcount > 0:
+            self.session.commit()
+        return res.rowcount
+
     def get_active_or_simulated(self) -> list[MitigationModel]:
-        self.expire_stale_mitigations()
-        stmt = select(MitigationModel).where(
-            MitigationModel.status.in_(["proposed", "simulated", "active", "applied"])
+        stmt = (
+            select(MitigationModel)
+            .where(
+                MitigationModel.status.in_(
+                    ["proposed", "simulated", "active", "applied"]
+                )
+            )
+            .order_by(desc(MitigationModel.id))
         )
         return list(self.session.scalars(stmt).all())
 

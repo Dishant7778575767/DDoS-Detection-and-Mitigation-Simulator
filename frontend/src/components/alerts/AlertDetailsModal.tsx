@@ -27,8 +27,8 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
 
   const rawSev = (alert.severity || "medium").toLowerCase();
   const isCritical = rawSev === "critical";
-  const isHigh = rawSev === "high";
-  const isMedium = rawSev === "medium" || rawSev === "warning";
+  const isHigh = rawSev === "high" || rawSev === "warning";
+  const isMedium = rawSev === "medium";
 
   // Friendly threat explanation for non-tech / recruiter
   let threatExplanation = "Anomalous traffic spike detected. The AI brain observed traffic patterns exceeding safety thresholds.";
@@ -117,7 +117,7 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
                 }
                 className="text-[10px] font-bold uppercase"
               >
-                {alert.severity.toUpperCase()}
+                {rawSev === "warning" ? "HIGH" : rawSev.toUpperCase()}
               </Badge>
             </div>
           </div>

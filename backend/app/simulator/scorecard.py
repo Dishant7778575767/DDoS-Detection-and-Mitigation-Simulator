@@ -181,7 +181,12 @@ def compute_scorecard(
         if (
             gt.is_attack
             and first_mitigate_tick is None
-            and any(m.is_active(r.tick) for m in r.active_mitigations)
+            and (
+                vm.blocked_attack_pps > 0
+                or any(
+                    m.start_tick <= r.tick < m.expiry_tick for m in r.active_mitigations
+                )
+            )
         ):
             first_mitigate_tick = r.tick
 

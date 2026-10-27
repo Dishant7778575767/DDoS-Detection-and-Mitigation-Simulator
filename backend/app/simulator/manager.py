@@ -197,6 +197,7 @@ class SimulationRunManager:
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         _RUN_EVALUATORS.pop(run_id, None)
         self.alert_repo.resolve_alerts_for_run(run_id)
+        self.mit_repo.expire_simulation_mitigations()
         updated = self.repo.update_run_status(run_id, "cancelled", completed_at=now)
         self.audit_repo.log(
             event_type="simulation_cancelled",
@@ -228,6 +229,7 @@ class SimulationRunManager:
         run.updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         _RUN_EVALUATORS.pop(run_id, None)
         self.alert_repo.resolve_alerts_for_run(run_id)
+        self.mit_repo.expire_simulation_mitigations()
         self.session.commit()
         self.session.refresh(run)
 
@@ -263,7 +265,22 @@ class SimulationRunManager:
             engine, evaluator, _ = _RUN_EVALUATORS[run_id]
         else:
             engine = ScenarioEngine(scenario_cfg)
-            evaluator = TickEvaluator(victim_config=victim_cfg)
+            threshold_cfg = None
+            try:
+                from app.storage.repositories import ThresholdConfigRepository
+
+                threshold_cfg = ThresholdConfigRepository(self.session).get_active()
+            except (
+                ImportError,
+                AttributeError,
+                ValueError,
+                OSError,
+                RuntimeError,
+            ) as exc:
+                logger.debug("Failed to load active threshold config: %s", exc)
+            evaluator = TickEvaluator(
+                victim_config=victim_cfg, threshold_config=threshold_cfg
+            )
             if tick_idx > 0:
                 for past_t in range(tick_idx):
                     past_f, past_gt = engine.generate_tick(past_t)
@@ -311,7 +328,11 @@ class SimulationRunManager:
             timestamp=now_iso,
             window_seconds=1.0,
             feature_schema_version="1.0.0",
-            features={**features, "pps": total_pps, "attack_pps": vm.offered_attack_pps},
+            features={
+                **features,
+                "pps": total_pps,
+                "attack_pps": vm.offered_attack_pps,
+            },
             target_ip=scenario_cfg.target_ip,
         )
 
@@ -321,9 +342,13 @@ class SimulationRunManager:
             observation_id=persisted_obs.id,
             model_version="rf-1.0.0",
             feature_schema_version="1.0.0",
-            prediction="ddos" if tick_result.policy_action != "monitor" and vm.offered_attack_pps > 0 else "benign",
+            prediction="ddos"
+            if tick_result.policy_action != "monitor" and vm.offered_attack_pps > 0
+            else "benign",
             score_type="probability",
-            score=round(float(features.get("Flow Bytes/s", 5000.0) / 10000.0), 3) if vm.offered_attack_pps > 0 else 0.05,
+            score=round(float(features.get("Flow Bytes/s", 5000.0) / 10000.0), 3)
+            if vm.offered_attack_pps > 0
+            else 0.05,
             traffic_threshold_exceeded=total_pps > 5000,
             policy_decision=tick_result.policy_action,
             mitigation_mode="simulation",
@@ -368,7 +393,10 @@ class SimulationRunManager:
             and (tick_idx % 3 == 0 or len(tick_result.new_actions) > 0)
         ):
             # Map severity realistically across all 4 distinct levels
-            if tick_result.policy_action == "request_mitigation" and vm.availability_pct < 60:
+            if (
+                tick_result.policy_action == "request_mitigation"
+                and vm.availability_pct < 60
+            ):
                 sev = "critical"
             elif vm.offered_attack_pps > 15000 or vm.availability_pct < 85:
                 sev = "high"
@@ -393,6 +421,7 @@ class SimulationRunManager:
         if next_tick >= run.total_ticks:
             _RUN_EVALUATORS.pop(run_id, None)
             self.alert_repo.resolve_alerts_for_run(run_id)
+            self.mit_repo.expire_simulation_mitigations()
             # Reconstruct all ticks to compute final ground truth scorecard
             all_ticks = self._reconstruct_all_results(
                 scenario_cfg, victim_cfg, run.total_ticks
@@ -428,7 +457,16 @@ class SimulationRunManager:
     ) -> list[TickEvaluationResult]:
         """Deterministically replay ticks to compute complete scorecard."""
         engine = ScenarioEngine(scenario_cfg)
-        evaluator = TickEvaluator(victim_config=victim_cfg)
+        threshold_cfg = None
+        try:
+            from app.storage.repositories import ThresholdConfigRepository
+
+            threshold_cfg = ThresholdConfigRepository(self.session).get_active()
+        except (ImportError, AttributeError, ValueError, OSError, RuntimeError) as exc:
+            logger.debug("Failed to load active threshold config: %s", exc)
+        evaluator = TickEvaluator(
+            victim_config=victim_cfg, threshold_config=threshold_cfg
+        )
         results: list[TickEvaluationResult] = []
         for t in range(total_ticks):
             features, gt = engine.generate_tick(t)

@@ -17,9 +17,9 @@ export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
     return (
       <div className="text-center py-12 text-xs text-[#9CA3AF] font-mono border border-dashed border-[rgba(75,85,99,0.3)] rounded-xl bg-[#090D16]/50">
         <Terminal className="w-8 h-8 text-[#00FF9D]/40 mx-auto mb-2" />
-        <div>No active threat alerts.</div>
+        <div>No matching threat alerts.</div>
         <div className="text-[11px] text-[#9CA3AF]/60 mt-1">
-          eBPF kernel probe is actively monitoring all ingress packets with normal flow distribution.
+          No matching alert records were returned by the SENTRIX API.
         </div>
       </div>
     );
@@ -112,7 +112,7 @@ export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
                 {/* Target IP */}
                 <td className="py-3 px-3 whitespace-nowrap">
                   <div className="text-gray-200">
-                    {alert.target_ip || "192.168.1.150"}
+                    {alert.target_ip || "Not recorded"}
                   </div>
                 </td>
 

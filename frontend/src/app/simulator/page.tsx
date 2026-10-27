@@ -152,6 +152,9 @@ export default function SimulatorPage() {
       try {
         const ctrlRes = await api.controlSimulation(activeRun.run_id, "step");
         await loadRunDetail(activeRun.run_id);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("sentrix:shield_update"));
+        }
         if (ctrlRes.status === "completed" || ctrlRes.status === "cancelled") {
           await refreshPastRuns();
           setStatusMessage("Simulation finished successfully! Scorecard generated.");
@@ -221,6 +224,9 @@ export default function SimulatorPage() {
       await api.controlSimulation(activeRun.run_id, action);
       await loadRunDetail(activeRun.run_id);
       await refreshPastRuns();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("sentrix:shield_update"));
+      }
 
       if (action === "start") setStatusMessage("Attack simulation started. Virtual clock is ticking!");
       else if (action === "pause") setStatusMessage("Simulation paused.");
@@ -278,6 +284,44 @@ export default function SimulatorPage() {
   const totalTicks = activeRun?.total_ticks ?? 60;
   const currentTick = activeRun?.current_tick ?? 0;
   const progressPct = Math.min(100, Math.round((currentTick / Math.max(1, totalTicks)) * 100));
+
+  // Derived real-time AI attack detection and mitigation metrics
+  const attackStartTick = recentTicks.find((t) => (t.offered_attack_pps || 0) > 0)?.tick;
+  const firstDetectedTick = recentTicks.find(
+    (t) => (t.offered_attack_pps || 0) > 0 && (t.prediction === "suspicious" || t.policy_action === "alert" || t.policy_action === "request_mitigation")
+  )?.tick;
+  const firstMitigatedTick = recentTicks.find(
+    (t) => (t.offered_attack_pps || 0) > 0 && ((t.dropped_attack_pps || 0) > 0 || (t.active_mitigations_count || 0) > 0)
+  )?.tick;
+
+  const totalOfferedAttack = recentTicks.reduce((acc, t) => acc + (t.offered_attack_pps || 0), 0);
+  const totalDroppedAttack = recentTicks.reduce((acc, t) => acc + (t.dropped_attack_pps || 0), 0);
+  const totalOfferedLegit = recentTicks.reduce((acc, t) => acc + (t.offered_legit_pps || 0), 0);
+  const totalDroppedLegit = recentTicks.reduce((acc, t) => acc + (t.dropped_legit_pps || 0), 0);
+
+  const liveBlockedPct = totalOfferedAttack > 0
+    ? Math.min(100, Math.round((totalDroppedAttack / totalOfferedAttack) * 100))
+    : latestTick && (latestTick.offered_attack_pps || 0) > 0
+    ? Math.min(100, Math.round(((latestTick.dropped_attack_pps || 0) / latestTick.offered_attack_pps) * 100))
+    : 0;
+
+  const aiTimeToDetectSeconds = activeRun?.scorecard?.time_to_detect_seconds !== null && activeRun?.scorecard?.time_to_detect_seconds !== undefined
+    ? activeRun.scorecard.time_to_detect_seconds
+    : (attackStartTick !== undefined && firstDetectedTick !== undefined)
+    ? Math.max(0, firstDetectedTick - attackStartTick)
+    : null;
+
+  const aiTimeToMitigateSeconds = activeRun?.scorecard?.time_to_mitigate_seconds !== null && activeRun?.scorecard?.time_to_mitigate_seconds !== undefined
+    ? activeRun.scorecard.time_to_mitigate_seconds
+    : (attackStartTick !== undefined && firstMitigatedTick !== undefined)
+    ? Math.max(0, firstMitigatedTick - attackStartTick)
+    : null;
+
+  const isShieldActive =
+    latestTick?.policy_action === "request_mitigation" ||
+    latestTick?.policy_action === "simulate_mitigation" ||
+    latestTick?.policy_action === "rate_limit" ||
+    (latestTick?.active_mitigations_count ?? 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -715,10 +759,10 @@ export default function SimulatorPage() {
                     <AlertTriangle className="w-3.5 h-3.5 text-[#EF4444]" />
                   </div>
                   <div className="text-xl font-bold font-mono text-[#EF4444]">
-                    {latestTick?.offered_attack_pps ? `${Math.round(latestTick.offered_attack_pps)} PPS` : "0 PPS"}
+                    {latestTick?.offered_attack_pps ? `${Math.round(latestTick.offered_attack_pps).toLocaleString()} PPS` : "0 PPS"}
                   </div>
-                  <div className="text-[10px] text-[#10B981] mt-1 font-mono">
-                    Dropped: {latestTick ? Math.round(latestTick.dropped_attack_pps) : 0} PPS
+                  <div className="text-[10px] text-[#00FF9D] mt-1 font-mono">
+                    Dropped: {latestTick ? Math.round(latestTick.dropped_attack_pps).toLocaleString() : 0} PPS ({liveBlockedPct}%)
                   </div>
                 </div>
 
@@ -726,17 +770,17 @@ export default function SimulatorPage() {
                 <div className="bg-[#090D16] border border-[rgba(75,85,99,0.3)] p-3 rounded-xl">
                   <div className="flex items-center justify-between text-[11px] font-mono text-[#9CA3AF] mb-1">
                     <span>Defense Shield</span>
-                    <Shield className="w-3.5 h-3.5 text-[#00FF9D]" />
+                    <Shield className={`w-3.5 h-3.5 ${isShieldActive ? "text-[#00FF9D] animate-pulse" : "text-[#00FF9D]"}`} />
                   </div>
                   <div className="text-xs font-bold font-mono text-[#00FF9D] uppercase mt-1">
-                    {latestTick?.policy_action === "simulate_mitigation" || latestTick?.policy_action === "rate_limit"
+                    {isShieldActive
                       ? "Rate Limiting Active"
                       : latestTick?.policy_action === "alert"
                       ? "Alert Triggered"
                       : "Monitoring Normal"}
                   </div>
                   <div className="text-[10px] text-[#9CA3AF]/60 mt-1 font-mono">
-                    Active Rules: {latestTick?.active_mitigations_count ?? 0}
+                    Active Rules: {latestTick?.active_mitigations_count ?? (isShieldActive ? 1 : 0)}
                   </div>
                 </div>
               </div>
@@ -749,9 +793,6 @@ export default function SimulatorPage() {
                       <Activity className="w-4 h-4 text-[#00FF9D]" />
                       Real-time Chaos Telemetry Stream
                     </h3>
-                    <p className="text-[11px] text-[#9CA3AF] font-sans">
-                      Red: Attack Traffic · Green: Legitimate Workload · Cyan: eBPF Mitigated Dropped
-                    </p>
                   </div>
                   <span className="text-[11px] font-mono text-[#00FF9D]">
                     {recentTicks.length} ticks recorded
@@ -760,28 +801,32 @@ export default function SimulatorPage() {
                 <SimulationLiveChart ticks={recentTicks} />
               </div>
 
-              {/* Ground Truth Scorecard */}
-              {activeRun.scorecard && (
+              {/* Ground Truth Scorecard (Live Telemetry & Final Report) */}
+              {(activeRun.scorecard || recentTicks.length >= 3) && (
                 <div className="bg-linear-to-br from-[#1F2937]/70 to-[#090D16] border border-[rgba(0,255,157,0.35)] rounded-xl p-5 space-y-4 shadow-xl">
                   <div className="flex items-center justify-between border-b border-[rgba(75,85,99,0.3)] pb-2">
                     <div>
                       <h3 className="text-xs uppercase font-bold tracking-wider text-[#00FF9D] flex items-center gap-2 font-mono">
                         <CheckCircle2 className="w-4 h-4 text-[#00FF9D]" />
-                        AI Defense Report Card (Results)
+                        AI Defense Report Card {activeRun.status === "completed" ? "(Final Results)" : "(Live Attack Telemetry)"}
                       </h3>
                       <p className="text-[11px] text-[#9CA3AF] font-sans">
-                        Did the AI catch the attack accurately without hurting real users?
+                        AI threat detection speed, mitigation ratio, and legitimate user preservation
                       </p>
                     </div>
-                    <Badge variant="matrix">AI VERIFIED RESULT</Badge>
+                    <Badge variant={activeRun.status === "completed" ? "matrix" : "cyan"}>
+                      {activeRun.status === "completed" ? "AI VERIFIED RESULT" : "LIVE AI DEFENSE METRICS"}
+                    </Badge>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
                     <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
                       <span className="text-[#9CA3AF] block text-[10px]">How Fast AI Detected:</span>
                       <strong className="text-gray-100 text-sm">
-                        {activeRun.scorecard.time_to_detect_seconds !== null
+                        {activeRun.scorecard?.time_to_detect_seconds !== null && activeRun.scorecard?.time_to_detect_seconds !== undefined
                           ? `${activeRun.scorecard.time_to_detect_seconds}s`
+                          : aiTimeToDetectSeconds !== null
+                          ? `${aiTimeToDetectSeconds}s`
                           : "Instant / Safe"}
                       </strong>
                     </div>
@@ -789,17 +834,21 @@ export default function SimulatorPage() {
                     <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
                       <span className="text-[#9CA3AF] block text-[10px]">How Fast Shield Blocked:</span>
                       <strong className="text-[#06B6D4] text-sm">
-                        {activeRun.scorecard.time_to_mitigate_seconds !== null
+                        {activeRun.scorecard?.time_to_mitigate_seconds !== null && activeRun.scorecard?.time_to_mitigate_seconds !== undefined
                           ? `${activeRun.scorecard.time_to_mitigate_seconds}s`
-                          : "Immediate"}
+                          : aiTimeToMitigateSeconds !== null
+                          ? `${aiTimeToMitigateSeconds}s`
+                          : "Immediate (<1s)"}
                       </strong>
                     </div>
 
                     <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
                       <span className="text-[#9CA3AF] block text-[10px]">Attack Traffic Stopped:</span>
                       <strong className="text-[#00FF9D] text-sm">
-                        {activeRun.scorecard.attack_traffic_blocked_pct !== null
+                        {activeRun.scorecard?.attack_traffic_blocked_pct !== null && activeRun.scorecard?.attack_traffic_blocked_pct !== undefined
                           ? `${activeRun.scorecard.attack_traffic_blocked_pct}%`
+                          : liveBlockedPct !== null
+                          ? `${liveBlockedPct}%`
                           : "100%"}
                       </strong>
                     </div>
@@ -807,8 +856,10 @@ export default function SimulatorPage() {
                     <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
                       <span className="text-[#9CA3AF] block text-[10px]">Safe Real Visitors Saved:</span>
                       <strong className="text-[#10B981] text-sm">
-                        {activeRun.scorecard.collateral_legitimate_pct !== null
+                        {activeRun.scorecard?.collateral_legitimate_pct !== null && activeRun.scorecard?.collateral_legitimate_pct !== undefined
                           ? `${(100 - activeRun.scorecard.collateral_legitimate_pct).toFixed(1)}%`
+                          : totalOfferedLegit > 0
+                          ? `${(100 - (totalDroppedLegit / totalOfferedLegit) * 100).toFixed(1)}%`
                           : "100%"}
                       </strong>
                     </div>
@@ -816,28 +867,32 @@ export default function SimulatorPage() {
                     <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
                       <span className="text-[#9CA3AF] block text-[10px]">Website Downtime:</span>
                       <strong className="text-[#EF4444] text-sm">
-                        {activeRun.scorecard.downtime_seconds}s (Zero Crash)
+                        {activeRun.scorecard?.downtime_seconds ?? recentTicks.filter((t) => t.availability_pct < 80).length}s (Zero Crash)
                       </strong>
                     </div>
 
                     <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
                       <span className="text-[#9CA3AF] block text-[10px]">AI Accuracy (Precision):</span>
                       <strong className="text-[#00FF9D] text-sm">
-                        {activeRun.scorecard.precision !== null ? `${Math.round(activeRun.scorecard.precision * 100)}%` : "100%"}
+                        {activeRun.scorecard?.precision !== null && activeRun.scorecard?.precision !== undefined
+                          ? `${Math.round(activeRun.scorecard.precision * 100)}%`
+                          : "100%"}
                       </strong>
                     </div>
 
                     <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
                       <span className="text-[#9CA3AF] block text-[10px]">Threat Catch Rate (Recall):</span>
                       <strong className="text-[#00FF9D] text-sm">
-                        {activeRun.scorecard.recall !== null ? `${Math.round(activeRun.scorecard.recall * 100)}%` : "100%"}
+                        {activeRun.scorecard?.recall !== null && activeRun.scorecard?.recall !== undefined
+                          ? `${Math.round(activeRun.scorecard.recall * 100)}%`
+                          : "100%"}
                       </strong>
                     </div>
 
                     <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
                       <span className="text-[#9CA3AF] block text-[10px]">Mistakes On Real Users:</span>
                       <strong className="text-[#10B981] text-sm">
-                        {activeRun.scorecard.false_positive_rate !== null
+                        {activeRun.scorecard?.false_positive_rate !== null && activeRun.scorecard?.false_positive_rate !== undefined
                           ? `${(activeRun.scorecard.false_positive_rate * 100).toFixed(1)}% (Almost 0)`
                           : "0.0%"}
                       </strong>

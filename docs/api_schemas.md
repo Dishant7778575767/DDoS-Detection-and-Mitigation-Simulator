@@ -1,437 +1,501 @@
-# SENTRIX API Schemas (v1.0.0)
+# SENTRIX REST API Specification (v1.5.0)
 
-Base path: `/api/v1`. Total endpoints: 16.
+The SENTRIX API provides a secure, token-authenticated DevSecOps control plane for real-time traffic monitoring, machine learning threat detection, automated mitigation lifecycle management, and discrete-event chaos simulations.
 
-## 1. Basics
+- **Base URL Prefix:** `/api/v1` (with `/internal` for platform keepalive)
+- **Authentication Scheme:** HTTP Bearer Token (`Authorization: Bearer <API_AUTH_TOKEN>`)
+- **Query Parameter Auth:** Supported for browser-initiated export streams (`?token=<API_AUTH_TOKEN>`)
+- **Telemetry Format:** Strict JSON (`application/json`) with optional CSV format for audit trails (`format=csv`)
+- **Timestamp Standard:** Strict UTC ISO 8601 (`YYYY-MM-DDTHH:MM:SSZ`)
 
-- **Auth:** `Authorization: Bearer <API_AUTH_TOKEN>`
-- **Request ID:** Every response has `X-Request-ID` (`req_<hex>`).
-- **Content type:** JSON by default. CSV only for `/audit?format=csv`.
-- **Time format:** ISO 8601 UTC, e.g. `2026-10-25T10:30:00Z`.
+---
 
-**Error format (all 4xx/5xx):**
+## 1. Global Conventions & Error Envelopes
 
-```json
-{ "error": { "code": "VALIDATION_ERROR", "message": "Request validation failed.", "request_id": "req_84f937d2a" } }
+Every API response includes an immutable tracing identifier header:
+```http
+X-Request-ID: req_9f8c3d1b7a2e4f50
 ```
 
-| Status | Code |
-| :-: | :-- |
-| 400 | `INVALID_REQUEST` / `SAFETY_GATE_REJECTED` |
-| 401 | `UNAUTHORIZED` |
-| 403 | `FORBIDDEN` |
-| 404 | `NOT_FOUND` |
-| 409 | `CONFLICT` (bad state change) |
-| 413 | `REQUEST_TOO_LARGE` |
-| 422 | `VALIDATION_ERROR` |
-| 429 | `RATE_LIMITED` |
-| 500 | `INTERNAL_ERROR` |
+### Standard Error Envelope
 
-## 2. Endpoint List
-
-| # | Method | Endpoint | What it does |
-| :-: | :-- | :-- | :-- |
-| 1 | GET | `/health` | Health check (auth optional) |
-| 2 | GET | `/models` | List models and approved model |
-| 3 | GET | `/models/metrics` | Model accuracy and other metrics |
-| 4 | POST | `/traffic/flows` | Send flow data into the pipeline |
-| 5 | GET | `/traffic/summary` | Live traffic rates |
-| 6 | POST | `/detection/analyze` | Run one-off detection |
-| 7 | GET | `/alerts` | List alerts (filters, pages) |
-| 8 | GET | `/mitigations` | List mitigation actions |
-| 9 | POST | `/mitigations/simulate` | Run a simulated rate limit |
-| 10 | POST | `/mitigations/{action_id}/cancel` | Cancel a mitigation |
-| 11 | POST | `/mitigations/disable` | Emergency stop for all mitigations |
-| 12 | POST | `/mitigations/disable?enable=true` | Turn emergency stop off |
-| 13 | GET | `/config/thresholds` | Get current thresholds |
-| 14 | PATCH | `/config/thresholds` | Change some thresholds |
-| 15 | PUT | `/config/thresholds` | Replace thresholds (idempotent) |
-| 16 | GET | `/audit` | Audit log (`json` or `csv`) |
-
-All endpoints need auth except `/health` (optional).
-
-## 3. Endpoint Details
-
-### Health
-
-`GET /health` → `200`
+All 4xx client and 5xx server responses adhere to a sanitized envelope without leaking internal stack traces:
 
 ```json
-{ "status": "ok" }
+{
+  "error": {
+    "code": "SAFETY_GATE_REJECTED",
+    "message": "Target IP 127.0.0.1 is protected by safety allowlist.",
+    "request_id": "req_9f8c3d1b7a2e4f50"
+  }
+}
 ```
 
-### Models
+| HTTP Status | Error Code (`code`) | Trigger Condition |
+| :---: | :--- | :--- |
+| `400` | `INVALID_REQUEST` / `SAFETY_GATE_REJECTED` | Parameter bounds breach, protected allowlist target, or invalid state machine input. |
+| `401` | `UNAUTHORIZED` | Missing, malformed, or invalid `Authorization: Bearer` token. |
+| `403` | `FORBIDDEN` | Caller lacks permissions to toggle safety parameters. |
+| `404` | `NOT_FOUND` | Specified simulation run, mitigation action, or alert resource does not exist. |
+| `409` | `CONFLICT` | Invalid lifecycle transition (e.g. attempting to reset an actively running simulation). |
+| `422` | `VALIDATION_ERROR` | Pydantic schema validation failure (e.g. non-numeric rates, missing required keys). |
+| `500` | `INTERNAL_ERROR` | Unexpected backend runtime fault (sanitized for operator safety). |
+| `503` | `SERVICE_UNAVAILABLE` | Database connectivity failure during keepalive ping. |
 
-`GET /models` → `200`
+---
 
+## 2. Master Endpoint Directory (24 Endpoints)
+
+| # | HTTP Method | Path | Subsystem | Description |
+| :-: | :--- | :--- | :--- | :--- |
+| **1** | `GET` | `/health` | System | Healthcheck & runtime operational check. |
+| **2** | `GET` | `/internal/keepalive` | System | Anti-pausing database connectivity ping (`SELECT 1`). |
+| **3** | `GET` | `/models` | AI & Detection | List registered classifiers and runtime approved model. |
+| **4** | `GET` | `/models/metrics` | AI & Detection | Retrieve verified model benchmark metrics (`rf-1.0.0` vs `iforest-1.0.0`). |
+| **5** | `POST` | `/detection/analyze` | AI & Detection | Execute ad-hoc ML flow feature vector inference. |
+| **6** | `POST` | `/traffic/flows` | Traffic | Ingest 1-second flow window records into the detection pipeline. |
+| **7** | `GET` | `/traffic/summary` | Traffic | Fetch rolling 1-second and 10-second traffic PPS/BPS statistics. |
+| **8** | `GET` | `/alerts` | Alerts | Paginated alert feed with severity filters (`low`, `medium`, `high`, `critical`). |
+| **9** | `GET` | `/mitigations/status` | Mitigation | Real-time defense shield status, countdown timer, dynamic host IP, and DNS gateways. |
+| **10** | `GET` | `/mitigations` | Mitigation | List active and historical mitigation actions with status filtering. |
+| **11** | `POST` | `/mitigations/simulate` | Mitigation | Rapid manual operator defense shield activation. |
+| **12** | `POST` | `/mitigations/{action_id}/cancel` | Mitigation | Early cancellation of an active mitigation rule. |
+| **13** | `POST` | `/mitigations/disable` | Mitigation | Emergency kill switch to disengage or lock down all future mitigations. |
+| **14** | `POST` | `/simulations` | Simulator | Initialize a new discrete-event chaos simulation run. |
+| **15** | `GET` | `/simulations` | Simulator | List historical simulation sessions with pagination. |
+| **16** | `GET` | `/simulations/compare` | Simulator | Side-by-side comparative analysis of 2 to 5 simulation runs. |
+| **17** | `GET` | `/simulations/{run_id}` | Simulator | Fetch comprehensive simulation session state and final scorecard. |
+| **18** | `POST` | `/simulations/{run_id}/control` | Simulator | Lifecycle controls: `start`, `pause`, `resume`, `step`, `cancel`, `reset`. |
+| **19** | `GET` | `/simulations/{run_id}/ticks` | Simulator | Fetch chronological time-series ticks for live chart rendering. |
+| **20** | `GET` | `/simulations/{run_id}/export` | Simulator | Export simulation run data as downloadable CSV or JSON. |
+| **21** | `GET` | `/config/thresholds` | Config | Retrieve active versioned volumetric and ML sensitivity thresholds. |
+| **22** | `PATCH` | `/config/thresholds` | Config | Incrementally calibrate specific threshold limits. |
+| **23** | `PUT` | `/config/thresholds` | Config | Fully replace and activate a new semantic threshold version. |
+| **24** | `GET` | `/audit` | Audit | Query immutable cryptographic audit trail (`json` or `csv`). |
+
+---
+
+## 3. Subsystem Specifications & Payloads
+
+### 3.1 System & Health
+
+#### `GET /health`
+Returns minimal authenticated operational health status.
+- **Auth:** Optional / Bearer Token.
+- **Response (`200 OK`):**
+```json
+{
+  "status": "ok"
+}
+```
+
+#### `GET /internal/keepalive`
+Lightweight query ensuring cloud databases (e.g. Supabase poolers) remain active.
+- **Auth:** Bearer Token (`KEEPALIVE_SECRET` or `API_AUTH_TOKEN`).
+- **Response (`200 OK`):**
+```json
+{
+  "status": "ok",
+  "database": "connected",
+  "timestamp": "2026-10-27T19:35:00.123456Z"
+}
+```
+
+---
+
+### 3.2 AI Models & Threat Detection
+
+#### `GET /models`
+Lists all candidate and active classifiers registered in the system.
+- **Response (`200 OK`):**
 ```json
 {
   "approved_model": "rf-1.0.0",
   "schema_version": "1.0.0",
   "models": [
-    { "model_version": "rf-1.0.0", "model_type": "RandomForestClassifier", "status": "approved", "schema_version": "1.0.0" },
-    { "model_version": "iforest-1.0.0", "model_type": "IsolationForest", "status": "experimental_unapproved", "schema_version": "1.0.0" }
+    {
+      "model_version": "rf-1.0.0",
+      "model_type": "RandomForestClassifier",
+      "status": "approved",
+      "schema_version": "1.0.0"
+    },
+    {
+      "model_version": "iforest-1.0.0",
+      "model_type": "IsolationForest",
+      "status": "experimental_unapproved",
+      "schema_version": "1.0.0"
+    }
   ]
 }
 ```
 
-`GET /models/metrics` → `200`
-
+#### `GET /models/metrics`
+Retrieves verified statistical test metrics from `models/rf-1.0.0/metrics.json` and `models/iforest-1.0.0/metrics.json`.
+- **Response (`200 OK`):**
 ```json
 {
   "dataset": "CIC-DDoS2019",
   "schema_version": "1.0.0",
-  "rf_metrics": { "accuracy": 0.9995, "precision": 0.9998, "recall": 0.9996, "f1": 0.9997, "false_positive_rate": 0.0173, "p95_latency_ms": 4.45 },
-  "iforest_metrics": { "accuracy": 0.9943, "precision": 0.9952, "recall": 0.9990, "f1": 0.9971, "false_positive_rate": 0.5476, "p95_latency_ms": 5.00 }
+  "rf_metrics": {
+    "accuracy": 0.999775,
+    "precision": 0.999949,
+    "recall": 0.999823,
+    "f1": 0.999886,
+    "false_positive_rate": 0.005763,
+    "p95_latency_ms": 6.564,
+    "training_time_seconds": 2.808
+  },
+  "iforest_metrics": {
+    "accuracy": 0.9943,
+    "precision": 0.995351,
+    "recall": 0.998915,
+    "f1": 0.99713,
+    "false_positive_rate": 0.533141,
+    "p95_latency_ms": 4.811,
+    "training_time_seconds": 0.088
+  }
 }
 ```
 
-### Traffic
-
-`POST /traffic/flows`
-
-Demo flows must have a source tag:
-
-- `demo-generator:<scenario>:<id>` for generated data
-- `demo-replay:<filename>:<row_id>` for CSV replay
-
-Request:
-
+#### `POST /detection/analyze`
+Executes an on-demand inference pass against a 14-dimensional flow feature vector.
+- **Request Body:**
 ```json
 {
-  "source_id": "sensor-01",
-  "timestamp": "2026-10-25T10:30:00Z",
-  "window_seconds": 10.0,
-  "feature_schema_version": "1.0.0",
   "features": {
-    "Total Length of Fwd Packets": 2944.0,
+    "Total Length of Fwd Packets": 150000.0,
     "Bwd Packet Length Max": 0.0,
-    "Flow Bytes/s": 294400.0,
-    "Fwd IAT Total": 1.0,
+    "Flow Bytes/s": 15000000.0,
+    "Fwd IAT Total": 1000.0,
     "Bwd IAT Total": 0.0,
-    "Fwd PSH Flags": 0,
-    "Fwd Packets/s": 2000.0,
-    "FIN Flag Count": 0,
-    "Fwd Avg Bytes/Bulk": 0,
-    "Bwd Avg Bulk Rate": 0,
-    "Subflow Fwd Packets": 2,
-    "Init_Win_bytes_forward": -1,
+    "Fwd PSH Flags": 0.0,
+    "Fwd Packets/s": 12000.0,
+    "FIN Flag Count": 0.0,
+    "Fwd Avg Bytes/Bulk": 0.0,
+    "Bwd Avg Bulk Rate": 0.0,
+    "Subflow Fwd Packets": 12000.0,
+    "Init_Win_bytes_forward": 1024.0,
     "Active Mean": 0.0,
     "Idle Mean": 0.0
   },
   "target_ip": "192.168.1.100"
 }
 ```
-
-Response `201`:
-
-```json
-{ "status": "processed", "event_id": "evt_73a9f02b1", "policy_decision": "simulate_rate_limit", "alert_id": "alt_84b721e90", "mitigation_action_id": "act_91c432a10" }
-```
-
-`GET /traffic/summary` → `200`
-
+- **Response (`200 OK`):**
 ```json
 {
-  "window_duration_seconds": 10.0, "observation_count": 45,
-  "packet_rate": 450.0, "byte_rate": 182000.0,
-  "syn_rate": 12.0, "syn_ack_ratio": 1.1,
-  "unique_sources": 8, "is_burst": false
-}
-```
-
-### Detection
-
-`POST /detection/analyze`
-
-Request: `{ "feature_schema_version": "1.0.0", "features": { ... } }` (same features as above)
-
-Response `200`:
-
-```json
-{
-  "event_id": "evt_42b89f10a",
+  "event_id": "det_manual_01",
+  "prediction": "suspicious",
+  "score": 0.985,
+  "score_type": "probability",
   "model_version": "rf-1.0.0",
   "feature_schema_version": "1.0.0",
-  "prediction": "suspicious",
-  "score_type": "random_forest_probability",
-  "score": 0.94,
+  "policy_action": "request_mitigation",
+  "policy_reasons": ["ML prediction is suspicious", "Flow rate exceeds 5,000 PPS"],
   "traffic_threshold_exceeded": true,
-  "policy_decision": "request_mitigation",
   "mitigation_mode": "simulation",
-  "timestamp": "2026-10-25T10:30:00Z"
+  "timestamp": "2026-10-27T19:35:00Z"
 }
 ```
 
-### Alerts
+---
 
-`GET /alerts?severity=critical&status=active&limit=50&offset=0` → `200`
+### 3.3 Mitigation & Defense Shield
 
+#### `GET /mitigations/status`
+Real-time shield telemetry polled by the frontend AppShell navigation bar and dashboards.
+- **Response (`200 OK`):**
 ```json
 {
-  "total_count": 1, "limit": 50, "offset": 0,
-  "alerts": [{
-    "alert_id": "alt_84b721e90", "detection_id": 14, "severity": "critical",
-    "title": "DDoS Attack Pattern Detected",
-    "description": "Both ML and traffic thresholds exceeded",
-    "source_id": "sensor-01", "timestamp": "2026-10-25T10:30:00Z", "status": "active"
-  }]
+  "emergency_disabled": false,
+  "mode": "simulation",
+  "shield_active": true,
+  "active_simulated_count": 1,
+  "max_concurrent_limit": 100,
+  "status": "operational",
+  "latest_mitigation": {
+    "action_id": "sim_shield_4f98c5d2f1ab",
+    "target_ip": "192.168.1.100",
+    "target_port": 80,
+    "rate_limit_pps": 5000,
+    "duration_seconds": 60,
+    "remaining_seconds": 38,
+    "status": "active",
+    "expires_at": null
+  },
+  "host_ip": "192.168.1.105",
+  "hostname": "sentrix-node-01",
+  "is_deployed": false,
+  "environment": "local",
+  "dns_gateways": ["8.8.8.8", "1.1.1.1"],
+  "protected_gateways": ["192.168.1.1", "10.0.0.1"],
+  "rate_limit_bounds": { "min_pps": 100, "max_pps": 50000 },
+  "duration_bounds": { "min_seconds": 10, "max_seconds": 300 },
+  "cooldown_ticks": 10
 }
 ```
 
-### Mitigations
-
-`POST /mitigations/simulate`
-
-Request:
-
-```json
-{ "target_ip": "10.0.0.99", "target_port": 80, "rate_limit_pps": 1000, "duration_seconds": 60 }
-```
-
-Response `201`:
-
+#### `POST /mitigations/simulate`
+Manually initiates an isolated virtual rate-limiting rule.
+- **Request Body:**
 ```json
 {
-  "action_id": "act_827b10fa", "target_ip": "10.0.0.99",
-  "rate_limit_pps": 1000, "duration_seconds": 60,
-  "mode": "simulation", "host_networking_modified": false,
-  "status": "simulated", "applied_at": "2026-10-25T10:30:00Z"
+  "target_ip": "192.168.1.100",
+  "target_port": 80,
+  "action_type": "rate_limit",
+  "rate_limit_pps": 5000,
+  "duration_seconds": 60,
+  "reason": "Operator rapid defense activation from Overview dashboard"
 }
 ```
-
-`POST /mitigations/{action_id}/cancel` → `200`
-
+- **Response (`201 Created`):**
 ```json
 {
-  "action_id": "act_827b10fa", "target_ip": "10.0.0.99",
-  "mode": "simulation", "host_networking_modified": false,
-  "status": "cancelled", "cancelled_at": "2026-10-25T10:31:00Z"
+  "action_id": "act_8f7b2a1c0d",
+  "target_ip": "192.168.1.100",
+  "target_port": 80,
+  "action_type": "rate_limit",
+  "rate_limit_pps": 5000,
+  "duration_seconds": 60,
+  "status": "simulated",
+  "mode": "simulation",
+  "created_at": "2026-10-27T19:35:00Z",
+  "expires_at": "2026-10-27T19:36:00Z"
 }
 ```
 
-`POST /mitigations/disable`
-
-- Query: `enable` (optional, boolean, default `false`). Use `true` to turn the emergency stop off.
-
-Stop all (default) → `200`:
-
-```json
-{ "emergency_disabled": true, "cancelled_actions_count": 3, "status": "All mitigation actions have been halted." }
-```
-
-Re-enable (`enable=true`) → `200`:
-
-```json
-{ "emergency_disabled": false, "cancelled_actions_count": 0, "status": "Emergency disable cleared. Mitigation requests allowed." }
-```
-
-### Thresholds
-
-`GET /config/thresholds` → `200`
-
+#### `POST /mitigations/{action_id}/cancel`
+Cancels an active mitigation rule before its natural expiration.
+- **Response (`200 OK`):**
 ```json
 {
-  "version": "v1.0.0", "is_active": true,
-  "pps_threshold": 5000.0, "bps_threshold": 10000000.0,
-  "syn_pps_threshold": 500.0, "syn_ack_ratio_threshold": 5.0,
-  "rf_probability_threshold": 0.75, "iforest_score_threshold": 0.2664,
-  "updated_by": "system", "created_at": "2026-10-25T10:00:00Z"
+  "action_id": "act_8f7b2a1c0d",
+  "status": "cancelled",
+  "cancelled_at": "2026-10-27T19:35:20Z"
 }
 ```
 
-`PATCH /config/thresholds` (send only fields to change)
-
-```json
-{ "pps_threshold": 8000.0, "rf_probability_threshold": 0.80 }
-```
-
-Response `200`: full threshold object with new version (e.g. `v1.0.1`) and `updated_by: "operator_api"`.
-
-`PUT /config/thresholds`: same body as PATCH. Returns the updated threshold object (`200`).
-
-### Audit
-
-`GET /audit`
-
-- `format`: `json` (default) or `csv`
-- `event_type` (optional): `alert_created`, `mitigation_simulated`, `mitigation_cancelled`, `emergency_disable_activated`, `emergency_disable_cleared`, `threshold_config_updated`, `pipeline_failure`
-- `limit`: 1–500 (default 50)
-- `offset`: 0 or more (default 0)
-
-JSON response `200`:
-
+#### `POST /mitigations/disable`
+Toggles the global emergency kill switch.
+- **Query Parameter:** `enable=true` (re-enable normal operation) or omit (engage lockdown).
+- **Response (`200 OK`):**
 ```json
 {
-  "total_count": 42, "limit": 50, "offset": 0,
-  "events": [{
-    "event_id": "aud_7c2b04f1", "event_type": "mitigation_simulated",
-    "action": "simulate_rate_limit", "actor": "operator_api",
-    "details": { "action_id": "act_827b10fa", "target_ip": "10.0.0.99", "rate_limit_pps": 1000, "duration_seconds": 60, "mode": "simulation", "host_networking_modified": false },
-    "timestamp": "2026-10-26T12:00:00Z"
-  }]
+  "emergency_disabled": true,
+  "status": "locked_down",
+  "message": "All mitigation requests blocked globally."
 }
 ```
 
-CSV response `200` (`Content-Type: text/csv`):
+---
 
-```csv
-event_id,event_type,action,actor,timestamp,details
-aud_7c2b04f1,mitigation_simulated,simulate_rate_limit,operator_api,2026-10-26T12:00:00Z,"{""action_id"":""act_827b10fa"",""target_ip"":""10.0.0.99""}"
-```
+### 3.4 Chaos Simulator Engine
 
-### Simulations (DDoS Simulator v1.5.0)
-
-#### 1. Create Simulation Run
-`POST /api/v1/simulations`
-
-Request body:
+#### `POST /simulations`
+Initializes a new reproducible discrete-event simulation run.
+- **Request Body:**
 ```json
 {
   "scenario_type": "syn_flood",
   "seed": 42,
   "duration_seconds": 60,
-  "baseline_pps": 200.0,
+  "baseline_pps": 250.0,
   "attack_peak_pps": 10000.0,
-  "attack_start_tick": 10,
-  "attack_end_tick": 50,
+  "attack_start_tick": 9,
+  "attack_end_tick": 51,
+  "speed_multiplier": 1.0,
+  "target_ip": "192.168.1.100",
+  "target_port": 80,
   "victim": {
     "bandwidth_mbps": 100.0,
     "cpu_capacity_pps": 5000.0,
     "max_active_connections": 10000,
+    "max_latency_ms": 5000.0,
     "baseline_latency_ms": 15.0
-  },
-  "speed_multiplier": 1.0
+  }
 }
 ```
-
-Response `201 Created`:
+- **Response (`201 Created`):**
 ```json
 {
-  "run_id": "sim_7c4b01da89e2",
+  "run_id": "sim_4f98c5d2f1ab",
   "scenario_type": "syn_flood",
   "status": "created",
   "seed": 42,
   "total_ticks": 60,
   "current_tick": 0,
   "speed_multiplier": 1.0,
-  "created_at": "2026-10-27T08:00:00Z"
+  "config": { ... },
+  "scorecard": null,
+  "created_at": "2026-10-27T19:30:00Z",
+  "updated_at": "2026-10-27T19:30:00Z",
+  "completed_at": null
 }
 ```
 
-#### 2. List Simulation Runs
-`GET /api/v1/simulations?status=running&limit=20&offset=0`
-
-Response `200 OK`:
+#### `POST /simulations/{run_id}/control`
+Dispatches lifecycle control commands to the simulation run.
+- **Request Body:**
 ```json
 {
-  "total_count": 5,
-  "limit": 20,
-  "offset": 0,
-  "runs": [
+  "action": "step"
+}
+```
+*(Valid actions: `start`, `pause`, `resume`, `step`, `cancel`, `reset`)*
+- **Response (`200 OK`):**
+```json
+{
+  "run_id": "sim_4f98c5d2f1ab",
+  "status": "running",
+  "current_tick": 1,
+  "message": "Advanced virtual clock to tick 1."
+}
+```
+
+#### `GET /simulations/{run_id}/ticks`
+Fetches chronological time-series points recorded during the simulation.
+- **Query Parameter:** `limit=150`
+- **Response (`200 OK`):**
+```json
+{
+  "run_id": "sim_4f98c5d2f1ab",
+  "total_ticks": 60,
+  "ticks": [
     {
-      "run_id": "sim_7c4b01da89e2",
-      "scenario_type": "syn_flood",
-      "status": "running",
-      "seed": 42,
-      "total_ticks": 60,
-      "current_tick": 24,
-      "speed_multiplier": 1.0,
-      "created_at": "2026-10-27T08:00:00Z",
-      "updated_at": "2026-10-27T08:00:24Z"
+      "tick": 9,
+      "offered_legit_pps": 250.0,
+      "offered_attack_pps": 9500.0,
+      "served_legit_pps": 245.0,
+      "dropped_legit_pps": 5.0,
+      "dropped_attack_pps": 9025.0,
+      "latency_ms": 17.5,
+      "availability_pct": 98.0,
+      "prediction": "suspicious",
+      "policy_action": "request_mitigation",
+      "active_mitigations_count": 1,
+      "timestamp": "2026-10-27T19:30:09Z"
     }
   ]
 }
 ```
 
-#### 3. Get Simulation Run Detail & Scorecard
-`GET /api/v1/simulations/{run_id}`
-
-Response `200 OK`:
+#### `GET /simulations/{run_id}`
+Returns simulation run metadata and the final computed scorecard when completed.
+- **Response (`200 OK`):**
 ```json
 {
-  "run_id": "sim_7c4b01da89e2",
+  "run_id": "sim_4f98c5d2f1ab",
   "scenario_type": "syn_flood",
   "status": "completed",
   "seed": 42,
   "total_ticks": 60,
-  "current_tick": 61,
+  "current_tick": 60,
   "speed_multiplier": 1.0,
-  "config": { ... },
   "scorecard": {
-    "time_to_detect_seconds": 2.0,
-    "time_to_mitigate_seconds": 3.0,
-    "attack_traffic_blocked_pct": 94.2,
-    "collateral_legitimate_pct": 2.1,
-    "downtime_seconds": 4,
-    "average_availability_pct": 96.5,
-    "precision": 0.95,
-    "recall": 0.98,
-    "false_positive_rate": 0.02
+    "time_to_detect_seconds": 0,
+    "time_to_mitigate_seconds": 3,
+    "attack_traffic_blocked_pct": 93.18,
+    "collateral_legitimate_pct": 2.0,
+    "downtime_seconds": 0,
+    "average_availability_pct": 98.0,
+    "average_latency_ms": 17.78,
+    "max_latency_ms": 102.5,
+    "total_ticks": 60,
+    "attack_ticks": 43,
+    "benign_ticks": 17,
+    "true_positives": 43,
+    "false_positives": 0,
+    "true_negatives": 17,
+    "false_negatives": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "false_positive_rate": 0.0,
+    "total_offered_attack_packets": 369282.39,
+    "total_blocked_attack_packets": 344096.93,
+    "total_offered_legitimate_packets": 15009.36,
+    "total_dropped_legitimate_packets": 300.82
   },
-  "created_at": "2026-10-27T08:00:00Z",
-  "completed_at": "2026-10-27T08:01:00Z"
+  "created_at": "2026-10-27T19:30:00Z",
+  "completed_at": "2026-10-27T19:31:00Z"
 }
 ```
 
-#### 4. Control Simulation Run
-`POST /api/v1/simulations/{run_id}/control`
-
-Request body:
+#### `GET /simulations/compare`
+Performs parameter, threshold, and metric comparison between runs.
+- **Query Parameter:** `run_ids=sim_run_01,sim_run_02`
+- **Response (`200 OK`):**
 ```json
 {
-  "action": "start"
-}
-```
-*Allowed actions:* `"start"`, `"pause"`, `"resume"`, `"step"`, `"cancel"`, `"reset"`.
-
-Response `200 OK`:
-```json
-{
-  "run_id": "sim_7c4b01da89e2",
-  "status": "running",
-  "current_tick": 24,
-  "message": "Simulation run transitioned to running"
+  "runs": [ ... ],
+  "comparison_matrix": {
+    "attack_blocked_pct": { "sim_run_01": 93.18, "sim_run_02": 89.4 },
+    "collateral_drop_pct": { "sim_run_01": 2.0, "sim_run_02": 4.1 },
+    "time_to_detect_sec": { "sim_run_01": 0, "sim_run_02": 1 }
+  }
 }
 ```
 
-#### 5. List Simulation Ticks
-`GET /api/v1/simulations/{run_id}/ticks?limit=100&offset=0`
+---
 
-Response `200 OK`:
+### 3.5 Dynamic Configuration & Thresholds
+
+#### `GET /config/thresholds`
+Fetches the active threshold configuration governing the policy engine.
+- **Response (`200 OK`):**
 ```json
 {
-  "run_id": "sim_7c4b01da89e2",
-  "ticks": [
+  "id": 1,
+  "version": "v1.0.0",
+  "is_active": true,
+  "pps_threshold": 5000.0,
+  "bps_threshold": 10000000.0,
+  "syn_pps_threshold": 500.0,
+  "syn_ack_ratio_threshold": 5.0,
+  "rf_probability_threshold": 0.75,
+  "iforest_score_threshold": 0.2664,
+  "updated_by": "system",
+  "created_at": "2026-10-25T12:00:00Z"
+}
+```
+
+#### `PATCH /config/thresholds`
+Calibrates specific threshold values while preserving remaining limits.
+- **Request Body:**
+```json
+{
+  "pps_threshold": 7500.0,
+  "rf_probability_threshold": 0.80
+}
+```
+- **Response (`200 OK`):** Updated threshold model.
+
+---
+
+### 3.6 Audit Trail & Compliance
+
+#### `GET /audit`
+Queries the tamper-evident audit trail tracking every mitigation state transition, simulation completion, and operator action.
+- **Query Parameters:** `limit=50`, `offset=0`, `event_type=mitigation_triggered`, `format=json|csv`
+- **Response (`200 OK`):**
+```json
+{
+  "total_count": 142,
+  "limit": 50,
+  "offset": 0,
+  "events": [
     {
-      "tick": 10,
-      "offered_legit_pps": 204.1,
-      "offered_attack_pps": 8420.0,
-      "served_legit_pps": 199.8,
-      "dropped_legit_pps": 4.3,
-      "dropped_attack_pps": 7999.0,
-      "latency_ms": 16.2,
-      "availability_pct": 97.9,
-      "prediction": "suspicious",
-      "policy_action": "request_mitigation"
+      "event_id": "aud_7a9c3d1b8f",
+      "event_type": "mitigation_triggered",
+      "action": "simulate_rate_limit",
+      "actor": "hybrid_policy",
+      "details": {
+        "action_id": "sim-act-9-b4f1",
+        "target_ip": "192.168.1.100",
+        "rate_limit_pps": 5000
+      },
+      "timestamp": "2026-10-27T19:30:09Z"
     }
   ]
 }
 ```
-
-#### 6. Compare Simulation Runs
-`POST /api/v1/simulations/compare`
-
-Request body:
-```json
-{
-  "run_ids": ["sim_1", "sim_2"]
-}
-```
-
-Response `200 OK`: Returns side-by-side run configurations, scorecards, and synthetic disclaimer.
-
-#### 7. Export Simulation Run Report
-`GET /api/v1/simulations/{run_id}/export?format=json` or `?format=markdown`
-
-Response `200 OK`: Full run audit report with prominent educational disclaimer.
+*(When `format=csv`, returns downloadable `text/csv` with `Content-Disposition: attachment; filename=audit_export.csv`)*

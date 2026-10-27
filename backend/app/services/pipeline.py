@@ -122,7 +122,11 @@ def process_flow_pipeline(
     # 5. Alert generation if single or dual signal
     if policy_decision.action in ("alert", "request_mitigation"):
         score = prediction.score or 0.0
-        if policy_decision.action == "request_mitigation" or score >= 0.85 or packet_rate > 20000:
+        if (
+            policy_decision.action == "request_mitigation"
+            or score >= 0.85
+            or packet_rate > 20000
+        ):
             severity = "critical"
         elif score >= 0.65 or packet_rate > 8000:
             severity = "high"

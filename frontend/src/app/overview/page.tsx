@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AlertDetailsModal } from "@/components/alerts/AlertDetailsModal";
 import { AlertsTable } from "@/components/alerts/AlertsTable";
@@ -93,8 +93,16 @@ export default function OverviewPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isActivatingShield, setIsActivatingShield] = useState(false);
   const [lastCheckMessage, setLastCheckMessage] = useState<string | null>(null);
-  const [pulseKey, setPulseKey] = useState<number>(0);
   const [selectedAlert, setSelectedAlert] = useState<AlertItem | null>(null);
+
+  useEffect(() => {
+    const handleShieldUpdate = () => {
+      void refreshShield();
+      void refreshSim();
+    };
+    window.addEventListener("sentrix:shield_update", handleShieldUpdate);
+    return () => window.removeEventListener("sentrix:shield_update", handleShieldUpdate);
+  }, [refreshShield, refreshSim]);
 
   const handleRefreshAll = async () => {
     setIsRefreshing(true);
@@ -105,7 +113,6 @@ export default function OverviewPage() {
         refreshSim(),
         refreshShield(),
       ]);
-      setPulseKey((k) => k + 1);
       const timeStr = new Date().toLocaleTimeString("en-IN", {
         timeZone: "Asia/Kolkata",
         hour12: false,
@@ -139,20 +146,46 @@ export default function OverviewPage() {
     }
   };
 
-  const handleCancelShield = async (actionId?: string) => {
-    if (!actionId) return;
+  const activeRun = simData?.run;
+  const isSimRunning = activeRun?.status === "running";
+
+  const handleCancelShield = async () => {
+    const mitigation = shieldStatus?.latest_mitigation;
     try {
-      await api.cancelMitigation(actionId);
-      await refreshShield();
+      // 1. If linked to an active simulation, cancel the running simulation
+      if (mitigation?.source === "simulation_run" && mitigation.run_id) {
+        try {
+          await api.controlSimulation(mitigation.run_id, "cancel");
+        } catch (simErr) {
+          console.debug("Simulation cancel non-critical error:", simErr);
+        }
+      } else if (activeRun && activeRun.status === "running") {
+        try {
+          await api.controlSimulation(activeRun.run_id, "cancel");
+        } catch (simErr) {
+          console.debug("Active run cancel non-critical error:", simErr);
+        }
+      }
+
+      // 2. Cancel the specific mitigation action if action_id exists
+      const actionToCancel = mitigation?.action_id;
+      if (actionToCancel) {
+        try {
+          await api.cancelMitigation(actionToCancel);
+        } catch (mitErr) {
+          console.debug("Mitigation cancel non-critical error:", mitErr);
+        }
+      }
+
+      // 3. Notify dashboard and refresh state
+      window.dispatchEvent(new CustomEvent("sentrix:shield_update"));
+      await Promise.all([refreshShield(), refreshSim()]);
       setLastCheckMessage("Defense Shield cancelled");
       setTimeout(() => setLastCheckMessage(null), 3000);
     } catch (err) {
       console.error("Shield cancellation error:", err);
     }
   };
-
-  const activeRun = simData?.run;
-  const isSimRunning = activeRun?.status === "running";
   const simTicks = useMemo(() => simData?.ticks || [], [simData?.ticks]);
   const latestSimTick = simTicks.length > 0 ? simTicks[simTicks.length - 1] : null;
 
@@ -165,39 +198,32 @@ export default function OverviewPage() {
     : 0;
 
   // Real-time Traffic calculations
-  const ambientBaselinePps = 430;
   const liveObservedPps =
     trafficData?.packet_rate && trafficData.packet_rate > 0
       ? Math.round(trafficData.packet_rate)
-      : ambientBaselinePps;
+      : 0;
 
   // Attack detection triggers:
   const isSimAttack = Boolean(isSimRunning && latestSimTick && latestSimTick.offered_attack_pps > 0);
-  const isTrafficSpike = liveObservedPps > 1500 || (trafficData?.syn_rate ?? 0) > 400;
   const hasActiveAlert = alertsData?.alerts?.some((a) => a.status === "active") ?? false;
-  const isAttackActive = isSimAttack || isTrafficSpike || (hasActiveAlert && liveObservedPps > 600);
+  const isAttackActive = isSimAttack || hasActiveAlert;
 
   const normalSpeed = isSimRunning && latestSimTick
     ? Math.round(latestSimTick.offered_legit_pps)
-    : Math.min(liveObservedPps, ambientBaselinePps);
-
+    : liveObservedPps;
   const attackSpeed = isSimRunning && latestSimTick
     ? Math.round(latestSimTick.offered_attack_pps)
-    : isAttackActive
-    ? Math.max(0, liveObservedPps - normalSpeed)
     : 0;
 
   const livePps = isSimRunning && latestSimTick
     ? normalSpeed + attackSpeed
     : liveObservedPps;
 
-  const currentAvailability = isSimRunning && latestSimTick
-    ? latestSimTick.availability_pct
-    : isAttackActive && !isShieldActive
-    ? Math.max(20, Math.round(100 - (attackSpeed / (livePps || 1)) * 80))
-    : 100.0;
+  const currentAvailability =
+    isSimRunning && latestSimTick ? latestSimTick.availability_pct : null;
 
-  const isHealthy = currentAvailability >= 85;
+  const isHealthy =
+    currentAvailability !== null && currentAvailability >= 85;
 
   // Chart telemetry points
   const chartPoints = useMemo(() => {
@@ -210,18 +236,13 @@ export default function OverviewPage() {
         second: "2-digit",
       });
 
-    const baseTime = lastUpdated ? lastUpdated.getTime() : 1730000000000;
-
-    // If simulation is actively running right now, stream the simulated attack curve
     if (isSimRunning && simTicks && simTicks.length > 0) {
-      const startRef = new Date(baseTime - (simTicks.length - 1) * 1000);
-      return simTicks.map((t, idx) => {
+      return simTicks.map((t) => {
         const aPps = Math.round(t.offered_attack_pps);
         const nPps = Math.round(t.offered_legit_pps);
         const totalPps = aPps + nPps;
-        const tickTime = new Date(startRef.getTime() + idx * 1000);
         return {
-          time: formatIST(tickTime),
+          time: formatIST(new Date(t.timestamp)),
           pps: totalPps,
           attack_pps: aPps,
           normal_pps: nPps,
@@ -231,23 +252,8 @@ export default function OverviewPage() {
       });
     }
 
-    // Otherwise, stream the realistic live production network wave
-    return Array.from({ length: 14 }).map((_, i) => {
-      const t = new Date(baseTime - (13 - i) * 3000);
-      const organicVariance = Math.sin((i + pulseKey) * 0.8) * 35;
-      const calculatedPps = Math.max(120, Math.round(liveObservedPps + organicVariance));
-      const calculatedAttack = isAttackActive ? Math.max(0, calculatedPps - normalSpeed) : 0;
-      const calculatedNormal = calculatedPps - calculatedAttack;
-      return {
-        time: formatIST(t),
-        pps: calculatedPps,
-        attack_pps: calculatedAttack,
-        normal_pps: calculatedNormal,
-        syn_pps: Math.round(calculatedAttack * 0.7),
-        bps: Math.round(calculatedPps * 128 * 8),
-      };
-    });
-  }, [isSimRunning, simTicks, lastUpdated, liveObservedPps, pulseKey, isAttackActive, normalSpeed]);
+    return trafficData?.time_series ?? [];
+  }, [isSimRunning, simTicks, trafficData?.time_series]);
 
   const statusType = isDisconnected
     ? "disconnected"
@@ -264,10 +270,10 @@ export default function OverviewPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3">
             <Activity className="w-7 h-7 text-[#00FF9D]" />
-            Live Traffic & Attack Scanner
+            Traffic & Detection Overview
           </h1>
           <p className="text-xs text-[#9CA3AF] mt-1">
-            Real-time scanner: Tells you instantly whether incoming users are Safe Visitors or a Fake Traffic Attack.
+            Flow telemetry and synthetic simulation results. This dashboard does not monitor live network interfaces.
           </p>
         </div>
 
@@ -288,7 +294,7 @@ export default function OverviewPage() {
             size="sm"
             onClick={handleRefreshAll}
             disabled={isRefreshing}
-            title="Refresh live data"
+            title="Refresh dashboard data"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-[#00FF9D]" : ""}`} />
             {isRefreshing ? "Checking..." : "Check Now"}
@@ -318,7 +324,7 @@ export default function OverviewPage() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono uppercase tracking-widest text-[#9CA3AF]">
-                AI Decision Engine Result:
+                Current Detection State:
               </span>
               <span className={`w-3 h-3 rounded-full ${isShieldActive ? "bg-[#00FF9D] animate-pulse" : isAttackActive ? "bg-[#EF4444] animate-ping" : "bg-[#00FF9D]"}`} />
             </div>
@@ -330,8 +336,8 @@ export default function OverviewPage() {
                 {isShieldActive
                   ? "🛡️ DEFENSE SHIELD ACTIVE (RATE-LIMITED)"
                   : isAttackActive
-                  ? "⚠️ DANGEROUS ATTACK DETECTED"
-                  : "✅ 100% SAFE (BENIGN TRAFFIC)"}
+                  ? "⚠️ THREAT SIGNAL PRESENT"
+                  : "✅ NO ACTIVE THREAT ALERT"}
               </div>
             </div>
 
@@ -339,8 +345,8 @@ export default function OverviewPage() {
               {isShieldActive
                 ? `Defense Shield is actively rate-limiting malicious flows to ${activeMitigation?.rate_limit_pps?.toLocaleString() || "5,000"} PPS on ${activeMitigation?.target_ip || "target node"}. Collateral damage is near 0%.`
                 : isAttackActive
-                ? `AI has identified ${attackSpeed.toLocaleString()} fake malicious requests hitting your server right now. System availability is dropping. Activate Defense Shield to protect normal users!`
-                : "The AI scanner is actively checking every packet. All visitors right now are genuine normal users. Your website is fast and safe."}
+                ? `SENTRIX has an active threat alert${isSimAttack ? ` and the current simulation offers ${attackSpeed.toLocaleString()} attack PPS` : ""}. Review the alert or run a simulation to inspect its impact.`
+                : "No active threat alert is currently recorded. Incoming live network interfaces are not monitored by this simulator."}
             </p>
 
             {/* Shield Auto-Expiry Progress Bar */}
@@ -368,7 +374,7 @@ export default function OverviewPage() {
               <Button
                 variant="outline"
                 size="md"
-                onClick={() => handleCancelShield(activeMitigation?.action_id)}
+                onClick={handleCancelShield}
                 className="border-rose-500/60 text-rose-300 hover:bg-rose-500/20 font-mono"
               >
                 Disable Shield ✕
@@ -386,8 +392,8 @@ export default function OverviewPage() {
               </Button>
             ) : (
               <div className="px-4 py-2 rounded-xl bg-[#090D16] border border-[rgba(75,85,99,0.4)] text-right">
-                <div className="text-[11px] text-[#9CA3AF] uppercase font-mono">Model Accuracy</div>
-                <div className="text-lg font-bold text-[#00FF9D] font-mono">99.98% Precision</div>
+                <div className="text-[11px] text-[#9CA3AF] uppercase font-mono">Mitigation Mode</div>
+                <div className="text-lg font-bold text-[#00FF9D] font-mono">Simulation only</div>
               </div>
             )}
             <Link href="/simulator">
@@ -403,22 +409,24 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Total Speed */}
         <MetricCard
-          title="Total Traffic Speed"
+          title="Observed Packet Rate"
           value={livePps}
           unit="packets/sec"
-          subtitle={`Normal users: ${normalSpeed.toLocaleString()} · Attackers: ${attackSpeed.toLocaleString()}`}
+          subtitle={isSimRunning && latestSimTick
+            ? `Legitimate: ${normalSpeed.toLocaleString()} · Attack: ${attackSpeed.toLocaleString()}`
+            : "Aggregate rate from submitted flow records"}
           icon={<Zap className="w-4 h-4 text-[#00FF9D]" />}
         />
 
         {/* 2. Website Health */}
         <MetricCard
           title="Website Health"
-          value={`${currentAvailability.toFixed(1)}%`}
-          subtitle={isHealthy ? "All users can browse smoothly" : "Website under heavy attack"}
-          icon={<Server className={`w-4 h-4 ${isHealthy ? "text-[#10B981]" : "text-[#EF4444]"}`} />}
+          value={currentAvailability === null ? "N/A" : `${currentAvailability.toFixed(1)}%`}
+          subtitle={currentAvailability === null ? "Available for simulation runs only" : isHealthy ? "Virtual victim within service limits" : "Virtual victim under resource pressure"}
+          icon={<Server className={`w-4 h-4 ${currentAvailability === null ? "text-[#06B6D4]" : isHealthy ? "text-[#10B981]" : "text-[#EF4444]"}`} />}
           badge={
-            <Badge variant={isHealthy ? "normal" : "critical"}>
-              {isHealthy ? "Online" : "Slow / Under Attack"}
+            <Badge variant={currentAvailability === null ? "cyan" : isHealthy ? "normal" : "critical"}>
+              {currentAvailability === null ? "Simulation only" : isHealthy ? "Healthy" : "Degraded"}
             </Badge>
           }
         />
@@ -426,8 +434,8 @@ export default function OverviewPage() {
         {/* 3. AI Verdict */}
         <MetricCard
           title="AI Classification"
-          value={isAttackActive ? "DDoS Attack" : "Normal Traffic"}
-          subtitle="Checked by AI Model (Random Forest)"
+          value={isAttackActive ? "Threat alert" : "No active alert"}
+          subtitle="Based on persisted alert records; not live packet inspection"
           icon={<Activity className={`w-4 h-4 ${isAttackActive ? "text-[#EF4444]" : "text-[#00FF9D]"}`} />}
           badge={
             <Badge variant={isAttackActive ? "critical" : "normal"}>
@@ -444,14 +452,12 @@ export default function OverviewPage() {
               ? `Shield Active (${remainingShieldSec}s)`
               : isAttackActive
               ? "Attack - Shield Off"
-              : "Standby (Safe)"
+              : "Standby"
           }
           subtitle={
             isShieldActive
               ? `Limiting to ${activeMitigation?.rate_limit_pps?.toLocaleString() || "5,000"} PPS`
-              : isAttackActive
-              ? "Click below to activate"
-              : "Ready to mitigate threats"
+              : "Virtual mitigation actions only"
           }
           icon={<Shield className={`w-4 h-4 ${isShieldActive ? "text-[#00FF9D] animate-pulse" : isAttackActive ? "text-rose-400" : "text-[#06B6D4]"}`} />}
           badge={
@@ -468,21 +474,27 @@ export default function OverviewPage() {
           <div>
             <CardTitle className="flex items-center gap-2">
               <Activity className="w-5 h-5 text-[#00FF9D]" />
-              Live Traffic Wave: Real Visitors vs Attackers
+              {isSimRunning ? "Synthetic Simulation Traffic" : "Traffic Time Series"}
             </CardTitle>
             <CardDescription>
-              Watch in real-time as the AI separates normal users from attack floods
+              {isSimRunning
+                ? "Per-tick synthetic scenario data from the active run."
+                : "No historical series is provided by the current traffic summary API."}
             </CardDescription>
           </div>
           <div className="flex items-center gap-4 text-xs font-mono">
-            <span className="flex items-center gap-1.5 text-[#00FF9D]">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#00FF9D]" />
-              Normal Visitors
-            </span>
-            <span className="flex items-center gap-1.5 text-[#EF4444]">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
-              Fake Attack Packets
-            </span>
+            {isSimRunning && (
+              <>
+                <span className="flex items-center gap-1.5 text-[#00FF9D]">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#00FF9D]" />
+                  Legitimate synthetic traffic
+                </span>
+                <span className="flex items-center gap-1.5 text-[#EF4444]">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" />
+                  Synthetic attack traffic
+                </span>
+              </>
+            )}
           </div>
         </CardHeader>
         <CardContent>

@@ -80,7 +80,7 @@ export function SimulationLiveChart({ ticks }: SimulationLiveChartProps) {
                       <strong>{item["Normal Traffic"].toLocaleString()} PPS</strong>
                     </div>
                     <div className="flex justify-between gap-4 text-[#06B6D4]">
-                      <span>eBPF XDP Dropped:</span>
+                      <span>Mitigated Dropped:</span>
                       <strong>{item["Attack Blocked"].toLocaleString()} PPS</strong>
                     </div>
                     <div className="flex justify-between gap-4 text-[#F59E0B]">

@@ -1,0 +1,134 @@
+name: CD
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Build & Validate Artifacts
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Setup Python Runtime
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install Backend Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "backend[dev]"
+
+      - name: Lint Backend Code
+        run: python -m ruff check backend/app backend/tests backend/migrations
+
+      - name: Execute Full Backend Test Suite
+        env:
+          DATABASE_URL: sqlite:///./sentrix_test.db
+          API_AUTH_REQUIRED: "true"
+          API_AUTH_TOKEN: test-token-sentrix
+        run: python -m pytest backend/tests -q
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint Frontend
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Type-Check Frontend
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Build Next.js Production Bundle
+        working-directory: frontend
+        run: npm run build
+
+  deploy-backend:
+    name: Deploy Backend Control Plane
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Trigger Cloud Backend Deploy Webhook
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$DEPLOY_HOOK" ]; then
+            echo "Triggering cloud deploy hook..."
+            curl -fsS -X POST "$DEPLOY_HOOK"
+            echo "Cloud deploy hook triggered successfully."
+          else
+            echo "RENDER_DEPLOY_HOOK_URL not configured. Skipping external webhook trigger."
+          fi
+
+  deploy-frontend:
+    name: Deploy Web Dashboard
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Trigger Frontend Cloud Deployment
+        env:
+          VERCEL_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$VERCEL_HOOK" ]; then
+            echo "Triggering Vercel deployment webhook..."
+            curl -fsS -X POST "$VERCEL_HOOK"
+            echo "Vercel deploy hook triggered successfully."
+          else
+            echo "VERCEL_DEPLOY_HOOK_URL not configured. Production build verified in validate job."
+          fi
+
+  post-deploy-smoke-test:
+    name: Production Health Verification
+    needs: [deploy-backend, deploy-frontend]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Healthcheck Endpoint Verification
+        env:
+          PROD_API_URL: ${{ secrets.PROD_API_URL }}
+          API_AUTH_TOKEN: ${{ secrets.API_AUTH_TOKEN }}
+          KEEPALIVE_SECRET: ${{ secrets.KEEPALIVE_SECRET }}
+        run: |
+          if [ -n "$PROD_API_URL" ] && [ -n "$API_AUTH_TOKEN" ]; then
+            echo "Verifying production health check..."
+            curl -fsS -H "Authorization: Bearer $API_AUTH_TOKEN" "$PROD_API_URL/api/v1/health"
+            
+            if [ -n "$KEEPALIVE_SECRET" ]; then
+              echo "Verifying database keepalive endpoint..."
+              curl -fsS -H "Authorization: Bearer $KEEPALIVE_SECRET" "$PROD_API_URL/internal/keepalive"
+            fi
+            echo "Production health check passed successfully."
+          else
+            echo "PROD_API_URL secrets not set. Skipping remote health ping."
+          fi
+

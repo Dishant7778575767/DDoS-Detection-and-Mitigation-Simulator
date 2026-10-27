@@ -18,9 +18,9 @@ export function StatusIndicator({
 
   const defaultLabels: Record<string, string> = {
     online: "Simulator: Online",
-    stale: "Telemetry Lagging",
+    stale: "Data Stale",
     disconnected: "Control Plane Offline",
-    loading: "Syncing Daemon...",
+    loading: "Loading Data...",
   };
 
   return (

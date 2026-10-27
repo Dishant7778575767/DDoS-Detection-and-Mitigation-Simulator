@@ -46,7 +46,7 @@ export interface SimulateMitigationResponse {
 
 export interface CancelMitigationResponse {
   action_id: string;
-  status: "cancelled";
+  status: "cancelled" | "expired";
   message: string;
 }
 
@@ -54,4 +54,3 @@ export interface EmergencyDisableResponse {
   emergency_disabled: boolean;
   message: string;
 }
-

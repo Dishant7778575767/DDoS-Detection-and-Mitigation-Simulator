@@ -16,7 +16,9 @@ def evaluate_ml_threat(
     - Isolation Forest: Threat indicated when anomaly score < iforest_threshold.
     """
     if prediction.score_type == "random_forest_probability":
-        return prediction.score >= rf_threshold
+        return prediction.score >= rf_threshold or (
+            prediction.prediction == "suspicious" and prediction.score >= 0.50
+        )
     elif prediction.score_type == "isolation_forest_anomaly_score":
         return prediction.score < iforest_threshold
     else:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -71,6 +71,14 @@ export default function MitigationPage() {
 
   const { data, loading, error, isStale, isDisconnected, lastUpdated, refresh } =
     usePolling(fetchMitigations, 3000);
+
+  useEffect(() => {
+    const handleShieldUpdate = () => {
+      void refresh();
+    };
+    window.addEventListener("sentrix:shield_update", handleShieldUpdate);
+    return () => window.removeEventListener("sentrix:shield_update", handleShieldUpdate);
+  }, [refresh]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);

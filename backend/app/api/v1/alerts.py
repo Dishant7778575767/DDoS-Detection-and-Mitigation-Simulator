@@ -47,21 +47,37 @@ def list_alerts(
     ] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    target_ip: Annotated[
+        str | None,
+        Query(min_length=1, max_length=64, description="Exact target IP filter"),
+    ] = None,
 ) -> AlertsListResponse:
     """Return filtered and paginated alerts."""
     safe_limit = limit.default if hasattr(limit, "default") else int(limit)
     safe_offset = offset.default if hasattr(offset, "default") else int(offset)
 
     repo = AlertRepository(session)
+    cleaned_target_ip = target_ip.strip() if target_ip else None
     items = repo.list_filtered(
-        severity=severity, status=status, limit=safe_limit, offset=safe_offset
+        severity=severity,
+        status=status,
+        limit=safe_limit,
+        offset=safe_offset,
+        target_ip=cleaned_target_ip,
     )
-    total = repo.count_filtered(severity=severity, status=status)
+    total = repo.count_filtered(
+        severity=severity,
+        status=status,
+        target_ip=cleaned_target_ip,
+    )
 
     def _extract_target_ip(alert) -> str | None:
-        if alert.detection is not None and alert.detection.observation is not None:
-            if alert.detection.observation.target_ip:
-                return alert.detection.observation.target_ip
+        if (
+            alert.detection is not None
+            and alert.detection.observation is not None
+            and alert.detection.observation.target_ip
+        ):
+            return alert.detection.observation.target_ip
         # Fallback to parsing IP from description text if legacy alert
         if alert.description:
             match = re.search(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", alert.description)

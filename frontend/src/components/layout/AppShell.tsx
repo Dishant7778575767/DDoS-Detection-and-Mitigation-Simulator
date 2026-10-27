@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -26,7 +26,7 @@ const routes = [
   {
     href: "/simulator",
     label: "Simulator",
-    sublabel: "Attack vs Safe Traffic",
+    sublabel: "Simulate Attack",
     icon: Zap,
     badge: "Live",
   },
@@ -65,7 +65,15 @@ export function AppShell({ children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const fetchStatus = useCallback(() => api.getMitigationStatus(), []);
-  const { data: shieldStatus } = usePolling(fetchStatus, 3000);
+  const { data: shieldStatus, refresh: refreshShield } = usePolling(fetchStatus, 2500);
+
+  useEffect(() => {
+    const handleShieldUpdate = () => {
+      void refreshShield();
+    };
+    window.addEventListener("sentrix:shield_update", handleShieldUpdate);
+    return () => window.removeEventListener("sentrix:shield_update", handleShieldUpdate);
+  }, [refreshShield]);
 
   const isShieldActive = Boolean(shieldStatus?.shield_active);
   const remainingSec = shieldStatus?.latest_mitigation?.remaining_seconds ?? 0;

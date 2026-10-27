@@ -360,6 +360,8 @@ def export_simulation_report(
         return Response(
             content=report,
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="simulation_{run_id}.csv"'},
+            headers={
+                "Content-Disposition": f'attachment; filename="simulation_{run_id}.csv"'
+            },
         )
     return report

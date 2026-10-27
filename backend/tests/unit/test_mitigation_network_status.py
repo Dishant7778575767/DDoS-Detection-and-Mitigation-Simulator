@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-from unittest.mock import MagicMock
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -69,4 +66,3 @@ def test_get_mitigation_system_status_contract() -> None:
     assert status_data["duration_bounds"]["min_seconds"] == 10
     assert status_data["duration_bounds"]["max_seconds"] == 300
     assert status_data["cooldown_ticks"] == 10
-

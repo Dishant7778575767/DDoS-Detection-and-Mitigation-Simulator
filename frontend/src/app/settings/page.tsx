@@ -99,9 +99,9 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
     };
   } else {
     policyOutcome = {
-      action: "ALERT ONLY",
+      action: "ALERT",
       badge: "warning",
-      text: `Exactly ONE signal exceeded (${isMlThreat ? "ML probability" : "Traffic PPS"}). Alert created; mitigation prohibited by policy.`,
+      text: `Exactly ONE signal exceeded (${isMlThreat ? "ML probability" : "Traffic PPS"}). Alert created mitigation prohibited by policy.`,
     };
   }
 
@@ -240,6 +240,7 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
             <Button
               variant="primary"
               loading={saving}
+              disabled={!initialData}
               onClick={handleSaveThresholds}
             >
               Save & Apply Thresholds
@@ -328,17 +329,55 @@ export default function SettingsPage() {
   const [tokenSavedMsg, setTokenSavedMsg] = useState<string | null>(null);
 
   const fetchThresholds = useCallback(() => api.getThresholds(), []);
-  const { data: thresholdData, loading, refresh } =
+  const {
+    data: thresholdData,
+    loading,
+    error: thresholdError,
+    isStale,
+    isDisconnected,
+    refresh,
+  } =
     usePolling<ThresholdConfigResponse>(fetchThresholds, 10000);
 
   const [modelMeta, setModelMeta] = useState<ModelsResponse | null>(null);
   const [modelMetrics, setModelMetrics] = useState<ModelMetricsResponse | null>(null);
+  const [modelLoadError, setModelLoadError] = useState<string | null>(null);
 
   const activeMetrics = modelMetrics?.rf_metrics;
 
   useEffect(() => {
-    api.getModels().then(setModelMeta).catch(() => {});
-    api.getModelMetrics().then(setModelMetrics).catch(() => {});
+    let ignore = false;
+    void Promise.allSettled([api.getModels(), api.getModelMetrics()]).then(
+      ([modelsResult, metricsResult]) => {
+        if (ignore) return;
+
+        const failures: string[] = [];
+        if (modelsResult.status === "fulfilled") {
+          setModelMeta(modelsResult.value);
+        } else {
+          failures.push(
+            modelsResult.reason instanceof Error
+              ? modelsResult.reason.message
+              : "Model metadata request failed"
+          );
+        }
+
+        if (metricsResult.status === "fulfilled") {
+          setModelMetrics(metricsResult.value);
+        } else {
+          failures.push(
+            metricsResult.reason instanceof Error
+              ? metricsResult.reason.message
+              : "Model metrics request failed"
+          );
+        }
+
+        setModelLoadError(failures.length > 0 ? failures.join("; ") : null);
+      }
+    );
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const handleUpdateToken = () => {
@@ -353,22 +392,40 @@ export default function SettingsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[rgba(75,85,99,0.3)]">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3 font-mono">
-            <Sliders className="w-6 h-6 text-[#00FF9D]" />
-            Detection & Policy Threshold Configuration
-          </h1>
-          <p className="text-xs text-[#9CA3AF] mt-1 font-sans">
-            Tune dual-signal detection cutoffs, inspect ML candidate metadata, and test policy decisions
-          </p>
+  <Sliders className="w-6 h-6 text-[#00FF9D]" />
+  Detection & Policy Settings
+</h1>
+
+<p className="text-xs text-[#9CA3AF] mt-1 font-sans">
+  Adjust detection thresholds and test security policies
+</p>
         </div>
 
         <div className="flex items-center gap-3">
-          <StatusIndicator status={loading ? "loading" : "online"} />
+          <StatusIndicator
+            status={
+              isDisconnected
+                ? "disconnected"
+                : isStale
+                  ? "stale"
+                  : loading
+                    ? "loading"
+                    : "online"
+            }
+          />
           <Button variant="outline" size="sm" onClick={() => refresh()}>
             <RefreshCw className="w-3.5 h-3.5" />
             Reset to Server
           </Button>
         </div>
       </div>
+
+      {(thresholdError || modelLoadError) && (
+        <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300">
+          {thresholdError && <p>Threshold configuration: {thresholdError.message}</p>}
+          {modelLoadError && <p>Model data: {modelLoadError}</p>}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
@@ -393,39 +450,41 @@ export default function SettingsPage() {
               <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
                 <span className="text-[#9CA3AF]">Candidate:</span>
                 <span className="text-gray-100 font-bold">
-                  {modelMeta?.approved_model ? `RandomForestClassifier (${modelMeta.approved_model})` : "RandomForestClassifier (rf-1.0.0)"}
+                  {modelMeta?.approved_model ? `RandomForestClassifier (${modelMeta.approved_model})` : "—"}
                 </span>
               </div>
               <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
                 <span className="text-[#9CA3AF]">Model Version:</span>
-                <span className="text-gray-200">{modelMeta?.approved_model || "rf-1.0.0"}</span>
+                <span className="text-gray-200">{modelMeta?.approved_model || "—"}</span>
               </div>
               <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
                 <span className="text-[#9CA3AF]">Feature Schema:</span>
-                <span className="text-gray-200">v{modelMeta?.schema_version || "1.0.0"} (14 features)</span>
+                <span className="text-gray-200">
+                  {modelMeta ? `v${modelMeta.schema_version} (14 features)` : "—"}
+                </span>
               </div>
               <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
                 <span className="text-[#9CA3AF]">Precision:</span>
                 <span className="text-[#10B981] font-bold">
-                  {activeMetrics?.precision !== undefined ? `${(activeMetrics.precision * 100).toFixed(2)}%` : "99.98%"}
+                  {activeMetrics?.precision !== undefined ? `${(activeMetrics.precision * 100).toFixed(2)}%` : "—"}
                 </span>
               </div>
               <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
                 <span className="text-[#9CA3AF]">Recall:</span>
                 <span className="text-[#10B981] font-bold">
-                  {activeMetrics?.recall !== undefined ? `${(activeMetrics.recall * 100).toFixed(2)}%` : "99.96%"}
+                  {activeMetrics?.recall !== undefined ? `${(activeMetrics.recall * 100).toFixed(2)}%` : "—"}
                 </span>
               </div>
               <div className="flex justify-between pb-2 border-b border-[rgba(75,85,99,0.2)]">
                 <span className="text-[#9CA3AF]">False Positive Rate:</span>
                 <span className="text-[#10B981] font-bold">
-                  {activeMetrics?.false_positive_rate !== undefined ? `${(activeMetrics.false_positive_rate * 100).toFixed(2)}%` : "0.58%"}
+                  {activeMetrics?.false_positive_rate !== undefined ? `${(activeMetrics.false_positive_rate * 100).toFixed(2)}%` : "—"}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[#9CA3AF]">P95 Latency:</span>
                 <span className="text-[#00FF9D] font-bold">
-                  {activeMetrics?.p95_latency_ms !== undefined ? `${activeMetrics.p95_latency_ms.toFixed(2)} ms` : "4.45 ms"}
+                  {activeMetrics?.p95_latency_ms !== undefined ? `${activeMetrics.p95_latency_ms.toFixed(2)} ms` : "—"}
                 </span>
               </div>
             </CardContent>
