@@ -60,10 +60,66 @@ def sanitize_numeric_value(val: Any, default: float = 0.0) -> float:
         return default
 
 
+def derive_missing_features_if_possible(cleaned: dict[str, Any]) -> dict[str, Any]:
+    """Derive standard Schema 1.0.0 features if raw flow attributes are present."""
+    augmented = dict(cleaned)
+
+    # 1. Total Length of Fwd Packets
+    if "Total Length of Fwd Packets" not in augmented:
+        if "Total Fwd Packets" in augmented and "Fwd Packet Length Mean" in augmented:
+            augmented["Total Length of Fwd Packets"] = float(
+                augmented["Total Fwd Packets"]
+            ) * float(augmented["Fwd Packet Length Mean"])
+        elif "Flow Bytes/s" in augmented and "Flow Duration" in augmented:
+            duration_s = max(0.001, float(augmented["Flow Duration"]) / 1_000_000.0)
+            augmented["Total Length of Fwd Packets"] = (
+                float(augmented["Flow Bytes/s"]) * duration_s * 0.6
+            )
+
+    # 2. Flow Bytes/s
+    if (
+        "Flow Bytes/s" not in augmented
+        and "Flow Duration" in augmented
+        and "Total Length of Fwd Packets" in augmented
+    ):
+        duration_s = max(0.001, float(augmented["Flow Duration"]) / 1_000_000.0)
+        augmented["Flow Bytes/s"] = (
+            float(augmented["Total Length of Fwd Packets"]) / duration_s
+        )
+
+    # 3. Fwd Packets/s
+    if "Fwd Packets/s" not in augmented:
+        if "Flow Packets/s" in augmented:
+            augmented["Fwd Packets/s"] = float(augmented["Flow Packets/s"]) * 0.9
+        elif "Total Fwd Packets" in augmented and "Flow Duration" in augmented:
+            duration_s = max(0.001, float(augmented["Flow Duration"]) / 1_000_000.0)
+            augmented["Fwd Packets/s"] = (
+                float(augmented["Total Fwd Packets"]) / duration_s
+            )
+
+    # 4. Subflow Fwd Packets
+    if "Subflow Fwd Packets" not in augmented and "Total Fwd Packets" in augmented:
+        augmented["Subflow Fwd Packets"] = float(augmented["Total Fwd Packets"])
+
+    # 5. Fwd IAT Total
+    if "Fwd IAT Total" not in augmented and "Flow Duration" in augmented:
+        augmented["Fwd IAT Total"] = float(augmented["Flow Duration"])
+
+    # 6. Bwd IAT Total
+    if (
+        "Bwd IAT Total" not in augmented
+        and "Total Backward Packets" in augmented
+        and float(augmented["Total Backward Packets"]) == 0
+    ):
+        augmented["Bwd IAT Total"] = 0.0
+
+    return augmented
+
+
 def prepare_feature_vector(record: dict[str, Any]) -> np.ndarray:
     """Convert a single flow observation dictionary into a strict, ordered 1D NumPy array."""
-    # Strip whitespace from keys
     cleaned_record = {normalize_feature_name(k): v for k, v in record.items()}
+    cleaned_record = derive_missing_features_if_possible(cleaned_record)
 
     vector: list[float] = []
     missing_keys: list[str] = []

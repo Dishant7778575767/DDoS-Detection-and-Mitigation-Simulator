@@ -7,12 +7,15 @@ import time
 from uuid import uuid4
 
 from sqlalchemy import desc, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.storage.models import (
     AlertModel,
     AuditEventModel,
+    CloudFrontKinesisEventModel,
     DetectionModel,
+    KinesisCheckpointModel,
     MitigationModel,
     ObservationModel,
     SimulationRunModel,
@@ -670,3 +673,127 @@ class SimulationRunRepository:
             self.session.delete(r)
         self.session.commit()
         return len(old_runs)
+
+
+class CloudFrontKinesisRepository:
+    """Repository for managing CloudFront Kinesis event deduplication and retention."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def record_events_batch(
+        self,
+        events: list[tuple[str, str, str, str, str]],
+    ) -> tuple[list[str], int]:
+        """Record batch of events with savepoint deduplication.
+
+        events is a list of tuples: (request_id, timestamp, stream_name, shard_id, sequence_number).
+        Returns (list_of_accepted_request_ids, duplicate_count).
+        """
+        now = _current_timestamp()
+        accepted_ids: list[str] = []
+        duplicate_count = 0
+
+        for req_id, ts, stream, shard, seq in events:
+            savepoint = self.session.begin_nested()
+            self.session.add(
+                CloudFrontKinesisEventModel(
+                    request_id=req_id,
+                    timestamp=ts,
+                    received_at=now,
+                    stream_name=stream,
+                    shard_id=shard,
+                    sequence_number=seq,
+                )
+            )
+            try:
+                savepoint.commit()
+                accepted_ids.append(req_id)
+            except IntegrityError:
+                savepoint.rollback()
+                duplicate_count += 1
+
+        self.session.commit()
+        return accepted_ids, duplicate_count
+
+    def prune_older_than(self, older_than_iso: str) -> int:
+        """Prune deduplication records older than cutoff timestamp."""
+        stmt = select(CloudFrontKinesisEventModel).where(
+            CloudFrontKinesisEventModel.timestamp < older_than_iso
+        )
+        old_records = list(self.session.scalars(stmt).all())
+        for r in old_records:
+            self.session.delete(r)
+        if old_records:
+            self.session.commit()
+        return len(old_records)
+
+
+class KinesisCheckpointRepository:
+    """Repository for managing persistent stream consumption checkpoints per shard."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get_checkpoint(self, stream_name: str, shard_id: str) -> str | None:
+        """Fetch the latest committed sequence number for a stream shard."""
+        stmt = select(KinesisCheckpointModel).where(
+            KinesisCheckpointModel.stream_name == stream_name,
+            KinesisCheckpointModel.shard_id == shard_id,
+        )
+        record = self.session.scalars(stmt).first()
+        return record.last_sequence_number if record else None
+
+    def update_checkpoint(
+        self,
+        stream_name: str,
+        shard_id: str,
+        sequence_number: str,
+        records_processed_delta: int = 0,
+    ) -> KinesisCheckpointModel:
+        """Upsert the committed sequence number checkpoint for a stream shard."""
+        stmt = select(KinesisCheckpointModel).where(
+            KinesisCheckpointModel.stream_name == stream_name,
+            KinesisCheckpointModel.shard_id == shard_id,
+        )
+        record = self.session.scalars(stmt).first()
+        now = _current_timestamp()
+        if record is None:
+            record = KinesisCheckpointModel(
+                stream_name=stream_name,
+                shard_id=shard_id,
+                last_sequence_number=sequence_number,
+                records_processed=records_processed_delta,
+                updated_at=now,
+            )
+            self.session.add(record)
+        else:
+            record.last_sequence_number = sequence_number
+            record.records_processed += records_processed_delta
+            record.updated_at = now
+
+        self.session.commit()
+        self.session.refresh(record)
+        return record
+
+    def delete_checkpoint(self, stream_name: str, shard_id: str) -> bool:
+        """Delete checkpoint for a given stream shard."""
+        stmt = select(KinesisCheckpointModel).where(
+            KinesisCheckpointModel.stream_name == stream_name,
+            KinesisCheckpointModel.shard_id == shard_id,
+        )
+        record = self.session.scalars(stmt).first()
+        if record is not None:
+            self.session.delete(record)
+            self.session.commit()
+            return True
+        return False
+
+    def list_checkpoints(self, stream_name: str) -> list[KinesisCheckpointModel]:
+        """List all shard checkpoints for a stream."""
+        stmt = (
+            select(KinesisCheckpointModel)
+            .where(KinesisCheckpointModel.stream_name == stream_name)
+            .order_by(KinesisCheckpointModel.shard_id.asc())
+        )
+        return list(self.session.scalars(stmt).all())

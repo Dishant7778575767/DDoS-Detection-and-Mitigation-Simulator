@@ -28,8 +28,16 @@ def test_initial_migration_is_repeatable_and_uses_configured_database(
             "SELECT version_num FROM alembic_version"
         ).fetchone()
         columns = connection.execute("PRAGMA table_info(observations)").fetchall()
+        cf_columns = connection.execute(
+            "PRAGMA table_info(cloudfront_kinesis_events)"
+        ).fetchall()
+        kp_columns = connection.execute(
+            "PRAGMA table_info(kinesis_checkpoints)"
+        ).fetchall()
     finally:
         connection.close()
 
-    assert revision == ("0002_observation_target_ip",)
+    assert revision == ("0003_aws_cloudfront_kinesis",)
     assert "target_ip" in {column[1] for column in columns}
+    assert "request_id" in {column[1] for column in cf_columns}
+    assert "last_sequence_number" in {column[1] for column in kp_columns}

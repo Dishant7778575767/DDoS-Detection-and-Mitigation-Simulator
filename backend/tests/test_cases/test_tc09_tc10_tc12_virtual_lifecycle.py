@@ -10,6 +10,7 @@ Validates:
 from __future__ import annotations
 
 import datetime
+from collections.abc import Generator
 
 import pytest
 from sqlalchemy import create_engine
@@ -31,7 +32,7 @@ from app.storage.repositories import AuditRepository, MitigationRepository
 
 
 @pytest.fixture
-def test_db() -> Session:
+def test_db() -> Generator[Session, None, None]:
     """In-memory SQLite session for testing virtual lifecycle."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)

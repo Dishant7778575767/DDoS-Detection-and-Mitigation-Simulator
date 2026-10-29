@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from app.detection.model_loader import load_runtime_model
 from app.detection.predictor import FlowPrediction, run_flow_inference
 from app.policy.engine import evaluate_hybrid_policy
+from app.safety.gate import is_emergency_disabled
 from app.simulator.mitigation_effects import MitigationEffectManager, VirtualMitigation
 from app.simulator.scenarios import GroundTruth
 from app.simulator.victim import VictimMetrics, VirtualVictim, VirtualVictimConfig
@@ -102,9 +103,10 @@ class TickEvaluator:
             prediction, features, self.threshold_config
         )
 
-        # 4. Check for virtual mitigation trigger
+        # 4. Check for virtual mitigation trigger (Honors emergency disable / Shield state)
+        shield_disabled = is_emergency_disabled()
         new_actions: list[VirtualMitigation] = []
-        if policy_decision.action == "request_mitigation":
+        if policy_decision.action == "request_mitigation" and not shield_disabled:
             # Check cooldown against last triggered mitigation
             in_cooldown = (
                 self._last_mitigation_tick is not None
@@ -150,13 +152,29 @@ class TickEvaluator:
                     }
                 )
 
-        # 5. Virtual victim resource evaluation
+        # 5. Virtual victim resource evaluation (Shield disabled = 0 effective mitigations)
         active_mitigations = self.mitigation_manager.get_active_actions(tick)
+        effective_mitigations = [] if shield_disabled else active_mitigations
+
+        if shield_disabled and active_mitigations:
+            audit_events.append(
+                {
+                    "event_type": "mitigation_suppressed",
+                    "action": "shield_disabled",
+                    "actor": "safety_gate",
+                    "details": {
+                        "tick": tick,
+                        "suppressed_mitigations_count": len(active_mitigations),
+                        "reason": "Defensive shield disabled; simulated attack traffic unmitigated",
+                    },
+                }
+            )
+
         victim_metrics = self.victim.evaluate_tick(
             tick=tick,
             offered_legitimate_pps=ground_truth.legitimate_pps,
             offered_attack_pps=ground_truth.attack_pps,
-            active_mitigations=active_mitigations,
+            active_mitigations=effective_mitigations,
         )
 
         return TickEvaluationResult(
@@ -167,7 +185,7 @@ class TickEvaluator:
             policy_action=policy_decision.action,
             policy_reasons=policy_decision.reasons,
             victim_metrics=victim_metrics,
-            active_mitigations=active_mitigations,
+            active_mitigations=effective_mitigations,
             new_actions=new_actions,
             expired_actions=expired_actions,
             audit_events=audit_events,

@@ -2,7 +2,7 @@
 
 > **Detect Threats in Seconds. Block Malicious Traffic. Keep Real Users Connected.**
 
-SENTRIX is an enterprise-grade, real-world DDoS detection, monitoring, and defensive mitigation platform. It combines live HTTP telemetry streaming, adaptive statistical anomaly baselining (EWMA), explainable multi-tier threat classification with **Flash Crowd differentiation**, staged dry-run mitigation rule enforcement, and a built-in discrete-event Cyber Range lab.
+SENTRIX is a DDoS detection prototype with HTTP telemetry ingestion (including AWS CloudFront Real-Time Logs via Amazon Kinesis Data Streams), adaptive statistical baselining (EWMA), threat classification, staged mitigation rules, and a discrete-event Cyber Range simulator. It does not capture packets from the host network or automatically modify production AWS WAF rules without operator authorization. Production use requires a trusted telemetry source, durable shared state, provider integration, and operational validation.
 
 ---
 
@@ -21,8 +21,8 @@ SENTRIX is an enterprise-grade, real-world DDoS detection, monitoring, and defen
 
 3. **Defensive Mitigation Engine & WAF Exporters:**
    - **Staged Dry-Run Default:** New rules default to `DRY_RUN` mode, permitting traffic while recording simulated drop counts to measure false positives.
-   - **Operator Approval Promotion:** SOC analysts explicitly review and promote rules to `ACTIVE` mode for live enforcement via leaky-bucket rate limiting.
-   - **WAF Configuration Exporters:** One-click generation of native **Nginx** (`deny <ip>;`, `limit_req_zone`) and **Caddy** (`@sentrix_blocked`) firewall configurations.
+   - **Operator Approval Promotion:** Rules can be staged and reviewed by an operator. The current in-process rate limiter is an application-level control, while edge enforcement is performed via exported AWS WAFv2 rulesets.
+   - **WAF Configuration Exporters:** One-click generation of native **AWS WAFv2** (CloudFront Scope `us-east-1` IPSet JSON and deployment CLI script), **Nginx** (`deny <ip>;`, `limit_req_zone`), and **Caddy** (`@sentrix_blocked`) firewall configurations.
    - **Protected Allowlist:** Loopback (`127.0.0.1`), internal subnets (`10.0.0.0/8`, `192.168.0.0/16`), and healthcheck probes can never be mitigated.
 
 4. **Dedicated Cyber Range & Chaos Lab (Isolated Sandbox):**
@@ -38,24 +38,24 @@ SENTRIX is an enterprise-grade, real-world DDoS detection, monitoring, and defen
 | **`/telemetry`** | **Live Telemetry Stream** | Sliding-window RPS, throughput, P50-P99 latencies, status distribution, and top clients. |
 | **`/threats`** | **Threat Detection Center** | Statistical velocity Z-scores, explainable decision evidence, and one-click mitigation. |
 | **`/alerts`** | **Threat Incidents** | Searchable persistent incident log connecting live telemetry alerts and history. |
-| **`/mitigation`** | **Defense Shield** | Staged Dry-Run rules, operator approval/revocation, and Nginx/Caddy export download. |
+| **`/mitigation`** | **Defense Shield** | Staged Dry-Run rules, operator approval/revocation, and AWS WAFv2/Nginx/Caddy export download. |
 | **`/simulator`** | **Cyber Range & Chaos Lab** | Synthetic red-team attack scenarios, M/M/1 queuing simulation, and AI scorecards. |
 | **`/history`** | **Security Audit Ledger** | Immutable regulatory audit log tracking rule promotions, alerts, and system actions. |
 | **`/settings`** | **Policy Configuration** | Dynamic EWMA sensitivity thresholds, ML cutoff scores, and emergency kill-switch. |
 
 ---
 
-## 3. Verified Benchmark Results
+## 3. Simulator Benchmark Results
 
-The following telemetry was captured during an automated attack benchmark:
+The following figures describe synthetic simulator evidence only; they are not measurements of real network traffic or a production AWS CloudFront deployment:
 
 | Key Performance Indicator | Measured Result | Significance |
 | :--- | :---: | :--- |
 | **AI Time to Detect (TTD)** | **< 1.0s (Instantaneous)** | Detected and classified attack on initial sliding-window tick. |
 | **Time to Mitigate (TTM)** | **3.0 Seconds** | Dry-run rule staged and operator-promoted to active defense within 3s. |
-| **Attack Traffic Neutralized** | **> 93% Blocked** | Over 340,000 malicious packets blocked during benchmark assault. |
-| **Real User Preservation** | **98.0% Preserved** | High entropy preservation ensures legitimate visitors remain unaffected. |
-| **False Positive Rate (Flash Crowd)** | **0.0% (Zero Drop)** | Flash crowd differentiator correctly passed 100% of viral traffic. |
+| **Simulated Attack Traffic Dropped** | **> 93%** | Synthetic simulator benchmark only; not packets captured from a real network. |
+| **Simulated Legitimate Traffic Served** | **98.0%** | Synthetic victim-model result; not a production availability guarantee. |
+| **Simulated Flash-Crowd False Positive Rate** | **0.0%** | Synthetic scenario result; requires evaluation against real application traffic. |
 | **Average Server Latency** | **17.78 ms** | Queue stabilized back to baseline normal after defense activation. |
 
 ---

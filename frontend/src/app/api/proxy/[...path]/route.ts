@@ -22,11 +22,6 @@ function extractCallerToken(req: NextRequest): string {
   if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
     return authHeader.slice(7).trim();
   }
-  // Allow query parameter token for browser file downloads / export links
-  const queryToken = req.nextUrl.searchParams.get("token");
-  if (queryToken) {
-    return queryToken.trim();
-  }
   return "";
 }
 

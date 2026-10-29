@@ -10,6 +10,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from app.api.internal import router as internal_router
 from app.api.v1.alerts import router as alerts_router
 from app.api.v1.audit import router as audit_router
+from app.api.v1.aws_kinesis import router as aws_kinesis_router
 from app.api.v1.config import router as config_router
 from app.api.v1.detection import router as detection_router
 from app.api.v1.health import router as health_router
@@ -18,9 +19,11 @@ from app.api.v1.models import router as models_router
 from app.api.v1.simulations import router as simulations_router
 from app.api.v1.telemetry import router as telemetry_router
 from app.api.v1.traffic import router as traffic_router
+from app.aws.kinesis_consumer import kinesis_consumer
 from app.core.config import get_settings, validate_runtime_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
+from app.simulator.manager import simulation_clock_worker
 from app.storage.database import get_session_factory, init_db
 from app.storage.repositories import SimulationRunRepository
 
@@ -28,13 +31,26 @@ from app.storage.repositories import SimulationRunRepository
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     configure_logging()
-    validate_runtime_settings(get_settings())
+    settings = get_settings()
+    validate_runtime_settings(settings)
     init_db()
     # Automatically mark incomplete/uncommitted runs as interrupted upon server restart
     session_factory = get_session_factory()
     with session_factory() as session:
         SimulationRunRepository(session).mark_interrupted_runs()
+
+    # Start Kinesis consumer worker if enabled in runtime configuration
+    if settings.aws_kinesis_consumer_enabled:
+        kinesis_consumer.start_background()
+
+    # Start simulation virtual clock background worker
+    simulation_clock_worker.start()
+
     yield
+
+    simulation_clock_worker.stop()
+    if settings.aws_kinesis_consumer_enabled:
+        kinesis_consumer.stop()
 
 
 def create_app() -> FastAPI:
@@ -53,10 +69,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Register all Phase 3 API routers under /api/v1 prefix
+    # Register API routers under /api/v1 prefix
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(traffic_router, prefix="/api/v1")
     app.include_router(telemetry_router, prefix="/api/v1")
+    app.include_router(aws_kinesis_router, prefix="/api/v1")
     app.include_router(detection_router, prefix="/api/v1")
     app.include_router(models_router, prefix="/api/v1")
     app.include_router(alerts_router, prefix="/api/v1")

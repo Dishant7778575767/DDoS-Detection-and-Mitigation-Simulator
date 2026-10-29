@@ -13,6 +13,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import threading
 import time
 import uuid
 from typing import Any
@@ -163,6 +164,8 @@ class SimulationRunManager:
             actor=user_id,
             details={"run_id": run_id, "resumed_at_tick": run.current_tick},
         )
+        simulation_clock_worker.start()
+        simulation_clock_worker.wake()
         return updated  # type: ignore[return-value]
 
     def pause_run(self, run_id: str, user_id: str = "demo_user") -> SimulationRunModel:
@@ -176,6 +179,7 @@ class SimulationRunManager:
                 f"Cannot pause run with status '{run.status}' (must be 'running')"
             )
 
+        simulation_clock_worker.clear_run(run_id)
         updated = self.repo.update_run_status(run_id, "paused")
         self.audit_repo.log(
             event_type="simulation_paused",
@@ -634,3 +638,89 @@ class SimulationRunManager:
             ]
         )
         return "\n".join(lines)
+
+
+class SimulationClockWorker:
+    """Dedicated background worker that continuously steps any running simulation."""
+
+    def __init__(self, session_factory: Any | None = None) -> None:
+        self._session_factory = session_factory
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
+        self._wake_event = threading.Event()
+        self._lock = threading.Lock()
+        self._last_tick_times: dict[str, float] = {}
+
+    def _get_session(self) -> Session:
+        if self._session_factory:
+            return self._session_factory()
+        from app.storage.database import get_db_session_factory
+
+        return get_db_session_factory()()
+
+    def wake(self) -> None:
+        self._wake_event.set()
+
+    def clear_run(self, run_id: str) -> None:
+        with self._lock:
+            self._last_tick_times.pop(run_id, None)
+
+    def start(self) -> None:
+        with self._lock:
+            if self._thread and self._thread.is_alive():
+                return
+            self._stop_event.clear()
+            self._thread = threading.Thread(
+                target=self._run_loop,
+                name="SimulationClockWorker",
+                daemon=True,
+            )
+            self._thread.start()
+            logger.info("SimulationClockWorker background runner started")
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        self._wake_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+        logger.info("SimulationClockWorker background runner stopped")
+
+    def _run_loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                session = self._get_session()
+                try:
+                    from app.storage.repositories import SimulationRunRepository
+
+                    repo = SimulationRunRepository(session)
+                    running_runs = repo.list_runs(status="running", limit=10)
+                    now = time.time()
+
+                    if not running_runs:
+                        session.close()
+                        self._wake_event.wait(timeout=0.5)
+                        self._wake_event.clear()
+                        continue
+
+                    manager = SimulationRunManager(session)
+                    for r in running_runs:
+                        speed = float(r.speed_multiplier or 1.0)
+                        interval = 1.0 / max(0.1, speed)
+                        with self._lock:
+                            last_t = self._last_tick_times.get(r.run_id, 0.0)
+                        if now - last_t >= interval:
+                            with self._lock:
+                                self._last_tick_times[r.run_id] = now
+                            manager.execute_single_step(
+                                r.run_id, user_id="simulation_clock"
+                            )
+                finally:
+                    session.close()
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("SimulationClockWorker loop notice: %s", exc)
+                time.sleep(0.5)
+
+            self._stop_event.wait(timeout=0.05)
+
+
+simulation_clock_worker = SimulationClockWorker()

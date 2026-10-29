@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ExplainCard } from "@/components/common/ExplainCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import {
@@ -32,22 +33,15 @@ import { usePolling } from "@/lib/polling";
 
 interface ThresholdFormProps {
   initialData: ThresholdConfigResponse | null;
+  loading: boolean;
   onRefresh: () => void;
 }
 
-function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
-  const [ppsThreshold, setPpsThreshold] = useState<number>(
-    initialData?.pps_threshold ?? 5000
-  );
-  const [bpsThreshold, setBpsThreshold] = useState<number>(
-    initialData?.bps_threshold ?? 10000000
-  );
-  const [synPpsThreshold, setSynPpsThreshold] = useState<number>(
-    initialData?.syn_pps_threshold ?? 500
-  );
-  const [rfCutoff, setRfCutoff] = useState<number>(
-    initialData?.rf_probability_threshold ?? 0.75
-  );
+function ThresholdForm({ initialData, loading, onRefresh }: ThresholdFormProps) {
+  const [ppsThreshold, setPpsThreshold] = useState<number>(initialData?.pps_threshold ?? 5000);
+  const [bpsThreshold, setBpsThreshold] = useState<number>(initialData?.bps_threshold ?? 10000000);
+  const [synPpsThreshold, setSynPpsThreshold] = useState<number>(initialData?.syn_pps_threshold ?? 500);
+  const [rfCutoff, setRfCutoff] = useState<number>(initialData?.rf_probability_threshold ?? 0.75);
 
   const [saving, setSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -56,6 +50,16 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
   // Simulation test sliders for interactive matrix preview
   const [testPps, setTestPps] = useState<number>(4500);
   const [testRfScore, setTestRfScore] = useState<number>(0.65);
+
+  // Keep local form in sync when initialData loads from backend
+  useEffect(() => {
+    if (initialData) {
+      setPpsThreshold(initialData.pps_threshold);
+      setBpsThreshold(initialData.bps_threshold);
+      setSynPpsThreshold(initialData.syn_pps_threshold);
+      setRfCutoff(initialData.rf_probability_threshold);
+    }
+  }, [initialData]);
 
   const handleSaveThresholds = async () => {
     setSaving(true);
@@ -69,10 +73,10 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
         syn_pps_threshold: Number(synPpsThreshold),
         rf_probability_threshold: Number(rfCutoff),
       });
-      setSaveSuccess(`Thresholds updated successfully (Schema v${res.version})!`);
+      setSaveSuccess(`Safety thresholds saved successfully (Version ${res.version})!`);
       onRefresh();
     } catch (err: unknown) {
-      setSaveError(`Update failed: ${getErrorMessage(err, "Ensure bearer token is valid")}`);
+      setSaveError(`Failed to save: ${getErrorMessage(err, "Please check your authentication token")}`);
     } finally {
       setSaving(false);
     }
@@ -85,22 +89,32 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
   let policyOutcome: { action: string; badge: "normal" | "warning" | "critical"; text: string };
   if (!isMlThreat && !isTrafficExceeded) {
     policyOutcome = {
-      action: "MONITOR",
+      action: "ALLOW & MONITOR",
       badge: "normal",
-      text: "Neither signal exceeds threshold. Continuing normal traffic flow monitoring.",
+      text: "Traffic and model confidence are both within safe limits. Normal visitors proceed without friction.",
     };
   } else if (isMlThreat && isTrafficExceeded) {
     policyOutcome = {
-      action: "REQUEST_MITIGATION",
+      action: "SUGGEST PROTECTION",
       badge: "critical",
-      text: "BOTH signals exceed limits! Eligible for bounded mitigation via safety gate.",
+      text: "BOTH traffic volume and model confidence exceed safety bounds! A defense rule is suggested.",
     };
   } else {
     policyOutcome = {
-      action: "ALERT",
+      action: "FLAG FOR REVIEW",
       badge: "warning",
-      text: `Exactly ONE signal exceeded (${isMlThreat ? "ML probability" : "Traffic PPS"}). Alert created; mitigation prohibited by policy.`,
+      text: `Only ONE indicator was exceeded (${isMlThreat ? "Model confidence" : "Traffic surge"}). Logged for review; no blocks applied.`,
     };
+  }
+
+  if (loading && !initialData) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-xs text-gray-400">
+          Loading active safety thresholds from backend...
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -108,30 +122,30 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle className="font-mono">Dual-Signal Detection Bounds</CardTitle>
+            <CardTitle>Dual-Signal Safety Thresholds</CardTitle>
             <CardDescription>
-              Thresholds govern when an alert escalates to an actionable mitigation request
+              SENTRIX uses two simultaneous checks before suggesting a defense action, preventing false alarms.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {saveSuccess && (
-            <div className="p-3.5 rounded-xl bg-[#090D16] border border-[#00FF9D]/40 text-[#00FF9D] text-xs font-mono flex items-center gap-2">
+            <div className="p-3.5 rounded-xl bg-[#090D16] border border-[#00FF9D]/40 text-[#00FF9D] text-xs flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-[#00FF9D] shrink-0" />
               <span>{saveSuccess}</span>
             </div>
           )}
 
           {saveError && (
-            <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/40 text-[#EF4444] text-xs font-mono">
+            <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/40 text-[#EF4444] text-xs">
               {saveError}
             </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="field-pps-threshold" className="block text-xs font-mono font-medium text-gray-200 mb-1">
-                Packets Per Second (PPS) Limit
+              <label htmlFor="field-pps-threshold" className="block text-xs font-medium text-gray-200 mb-1">
+                Traffic Surge Limit (Requests/sec)
               </label>
               <input
                 id="field-pps-threshold"
@@ -140,12 +154,14 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
                 onChange={(e) => setPpsThreshold(Number(e.target.value))}
                 className="w-full bg-[#090D16] border border-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
               />
-              <span className="text-[10px] text-gray-400 font-mono">Normal baseline ceiling (default: 5,000)</span>
+              <span className="text-[10px] text-gray-400">
+                Current backend setting: {initialData?.pps_threshold?.toLocaleString() ?? "Loading..."}
+              </span>
             </div>
 
             <div>
-              <label htmlFor="field-bps-threshold" className="block text-xs font-mono font-medium text-gray-200 mb-1">
-                Bits Per Second (BPS) Limit
+              <label htmlFor="field-bps-threshold" className="block text-xs font-medium text-gray-200 mb-1">
+                Bandwidth Limit (Bits/sec)
               </label>
               <input
                 id="field-bps-threshold"
@@ -154,12 +170,14 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
                 onChange={(e) => setBpsThreshold(Number(e.target.value))}
                 className="w-full bg-[#090D16] border border-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
               />
-              <span className="text-[10px] text-gray-400 font-mono">Bandwidth pipe limit (default: 10,000,000)</span>
+              <span className="text-[10px] text-gray-400">
+                Current backend setting: {initialData?.bps_threshold?.toLocaleString() ?? "Loading..."}
+              </span>
             </div>
 
             <div>
-              <label htmlFor="field-syn-threshold" className="block text-xs font-mono font-medium text-gray-200 mb-1">
-                SYN Packets Per Second Limit
+              <label htmlFor="field-syn-threshold" className="block text-xs font-medium text-gray-200 mb-1">
+                Rapid Connection Limit (SYN packets/sec)
               </label>
               <input
                 id="field-syn-threshold"
@@ -168,12 +186,14 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
                 onChange={(e) => setSynPpsThreshold(Number(e.target.value))}
                 className="w-full bg-[#090D16] border border-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
               />
-              <span className="text-[10px] text-gray-400 font-mono">Connection flood boundary (default: 500)</span>
+              <span className="text-[10px] text-gray-400">
+                Current backend setting: {initialData?.syn_pps_threshold?.toLocaleString() ?? "Loading..."}
+              </span>
             </div>
 
             <div>
-              <label htmlFor="field-rf-cutoff" className="block text-xs font-mono font-medium text-gray-200 mb-1">
-                Random Forest ML Cutoff: {(rfCutoff * 100).toFixed(0)}%
+              <label htmlFor="field-rf-cutoff" className="block text-xs font-medium text-gray-200 mb-1">
+                Required Model Confidence: {(rfCutoff * 100).toFixed(0)}%
               </label>
               <input
                 id="field-rf-cutoff"
@@ -185,13 +205,15 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
                 onChange={(e) => setRfCutoff(Number(e.target.value))}
                 className="w-full h-2 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#00FF9D] mt-2"
               />
-              <span className="text-[10px] text-gray-400 font-mono">Confidence boundary (default: 0.75)</span>
+              <span className="text-[10px] text-gray-400">
+                Current backend setting: {initialData ? `${(initialData.rf_probability_threshold * 100).toFixed(0)}%` : "Loading..."}
+              </span>
             </div>
           </div>
 
           <div className="flex justify-end pt-2">
-            <Button variant="primary" size="sm" loading={saving} onClick={handleSaveThresholds}>
-              Save Thresholds
+            <Button variant="primary" size="sm" loading={saving} onClick={handleSaveThresholds} className="font-sans text-xs">
+              Save Safety Limits
             </Button>
           </div>
         </CardContent>
@@ -201,20 +223,20 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
       <Card>
         <CardHeader>
           <div>
-            <CardTitle className="font-mono text-sm flex items-center gap-2">
+            <CardTitle className="text-sm flex items-center gap-2">
               <Zap className="w-4 h-4 text-[#00FF9D]" />
-              Interactive Dual-Signal Policy Matrix
+              Interactive Policy Preview (Test Your Settings)
             </CardTitle>
             <CardDescription>
-              Drag sliders to preview how your configured thresholds decide actions
+              Drag the sliders below to see in real time how your safety thresholds decide when to protect your system.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label htmlFor="slider-test-pps" className="block text-xs font-mono text-gray-300">
-                Simulated Traffic PPS: <strong className="text-gray-100">{testPps.toLocaleString()}</strong>
+              <label htmlFor="slider-test-pps" className="block text-xs text-gray-300">
+                Test Traffic Rate: <strong className="text-gray-100 font-mono">{testPps.toLocaleString()} req/s</strong>
               </label>
               <input
                 id="slider-test-pps"
@@ -226,17 +248,17 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
                 onChange={(e) => setTestPps(Number(e.target.value))}
                 className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#06B6D4]"
               />
-              <div className="text-[11px] font-mono">
-                Traffic threshold exceeded:{" "}
-                <span className={isTrafficExceeded ? "text-[#EF4444] font-bold" : "text-[#10B981]"}>
-                  {isTrafficExceeded ? "YES (Exceeded)" : "NO (Within Limit)"}
+              <div className="text-[11px]">
+                Traffic Limit Exceeded:{" "}
+                <span className={isTrafficExceeded ? "text-[#EF4444] font-bold" : "text-[#10B981] font-bold"}>
+                  {isTrafficExceeded ? "Yes (Above Limit)" : "No (Normal Range)"}
                 </span>
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="slider-test-rf" className="block text-xs font-mono text-gray-300">
-                Simulated ML Score: <strong className="text-gray-100">{(testRfScore * 100).toFixed(0)}%</strong>
+              <label htmlFor="slider-test-rf" className="block text-xs text-gray-300">
+                Test Model Certainty: <strong className="text-gray-100 font-mono">{(testRfScore * 100).toFixed(0)}%</strong>
               </label>
               <input
                 id="slider-test-rf"
@@ -248,10 +270,10 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
                 onChange={(e) => setTestRfScore(Number(e.target.value))}
                 className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#F59E0B]"
               />
-              <div className="text-[11px] font-mono">
-                ML signal active:{" "}
-                <span className={isMlThreat ? "text-[#EF4444] font-bold" : "text-[#10B981]"}>
-                  {isMlThreat ? "YES (Threat Flagged)" : "NO (Benign)"}
+              <div className="text-[11px]">
+                Model Flag Active:{" "}
+                <span className={isMlThreat ? "text-[#EF4444] font-bold" : "text-[#10B981] font-bold"}>
+                  {isMlThreat ? "Yes (Pattern Flagged)" : "No (Normal Pattern)"}
                 </span>
               </div>
             </div>
@@ -260,10 +282,10 @@ function ThresholdForm({ initialData, onRefresh }: ThresholdFormProps) {
           {/* Dynamic Matrix Result */}
           <div className="p-4 rounded-xl border border-gray-700/60 bg-[#090D16] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <div className="text-xs text-gray-400 font-mono">Calculated Hybrid Policy Outcome:</div>
-              <div className="text-sm text-gray-100 font-semibold mt-1 font-mono">{policyOutcome.text}</div>
+              <div className="text-xs text-gray-400">Resulting System Action:</div>
+              <div className="text-sm text-gray-100 font-semibold mt-1">{policyOutcome.text}</div>
             </div>
-            <Badge variant={policyOutcome.badge} className="text-sm px-3 py-1 self-start sm:self-auto">
+            <Badge variant={policyOutcome.badge} className="text-xs px-3 py-1 self-start sm:self-auto font-sans">
               {policyOutcome.action}
             </Badge>
           </div>
@@ -280,7 +302,7 @@ export default function SettingsPage() {
   const fetchThresholds = useCallback(() => api.getThresholds(), []);
   const {
     data: thresholdData,
-    loading,
+    loading: thresholdsLoading,
     error: thresholdError,
     isStale,
     isDisconnected,
@@ -289,19 +311,18 @@ export default function SettingsPage() {
 
   const [modelMeta, setModelMeta] = useState<ModelsResponse | null>(null);
   const [modelMetrics, setModelMetrics] = useState<ModelMetricsResponse | null>(null);
+  const [modelLoading, setModelLoading] = useState<boolean>(true);
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
 
-  const activeMetrics = modelMetrics?.rf_metrics;
   const primaryModel = modelMeta?.models?.[0];
-  const modelDisplayName = activeMetrics?.model_name || primaryModel?.model_type || modelMeta?.approved_model || "RandomForest";
-  const modelVersion = primaryModel?.model_version || modelMeta?.approved_model || "v2.0-rc1";
-  const modelStatus = primaryModel?.status || "Active Candidate";
 
   useEffect(() => {
     let ignore = false;
+    setModelLoading(true);
     void Promise.allSettled([api.getModels(), api.getModelMetrics()]).then(
       ([modelsResult, metricsResult]) => {
         if (ignore) return;
+        setModelLoading(false);
 
         const failures: string[] = [];
         if (modelsResult.status === "fulfilled") {
@@ -334,7 +355,7 @@ export default function SettingsPage() {
 
   const handleUpdateToken = () => {
     setApiAuthToken(authToken.trim());
-    setTokenSavedMsg("Token applied to active session.");
+    setTokenSavedMsg("Token updated for active session.");
     setTimeout(() => setTokenSavedMsg(null), 3000);
   };
 
@@ -343,12 +364,12 @@ export default function SettingsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-gray-800">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3 font-mono">
+          <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3">
             <Sliders className="w-6 h-6 text-[#00FF9D]" />
-            Detection & Policy Settings
+            Settings
           </h1>
-          <p className="text-xs text-gray-400 mt-1 font-sans">
-            Adjust detection thresholds and test security policies
+          <p className="text-xs text-gray-400 mt-1">
+            Review and manage how SENTRIX behaves, including baseline sensitivity, detection limits, and emergency protection controls.
           </p>
         </div>
 
@@ -358,69 +379,88 @@ export default function SettingsPage() {
               isDisconnected
                 ? "disconnected"
                 : isStale
-                  ? "stale"
-                  : loading
-                    ? "loading"
-                    : "online"
+                ? "stale"
+                : thresholdsLoading
+                ? "loading"
+                : "online"
             }
           />
-          <Button variant="outline" size="sm" onClick={() => refresh()}>
-            <RefreshCw className="w-3.5 h-3.5" />
-            Reset to Server
+          <Button variant="outline" size="sm" onClick={() => refresh()} className="text-xs font-sans">
+            <RefreshCw className="w-3.5 h-3.5 mr-1" />
+            Reload Server Values
           </Button>
         </div>
       </div>
 
       {(thresholdError || modelLoadError) && (
         <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300">
-          {thresholdError && <p>Threshold configuration: {thresholdError.message}</p>}
-          {modelLoadError && <p>Model data: {modelLoadError}</p>}
+          {thresholdError && <p>Thresholds: {thresholdError.message}</p>}
+          {modelLoadError && <p>Model: {modelLoadError}</p>}
         </div>
       )}
+
+      {/* Plain English Explanation Card */}
+      <ExplainCard
+        title="Why does SENTRIX use Dual-Signal thresholds?"
+        summary="To prevent false alarms, SENTRIX will not suggest blocking traffic unless BOTH the traffic surge limit AND the machine learning confidence limit are crossed at the same time."
+        tips={[
+          "If traffic spikes but the ML model identifies it as real people (like a viral social media post), NO blocks are suggested.",
+          "If the ML model is suspicious but traffic volume is completely normal, SENTRIX logs the event for review without interrupting visitors.",
+          "Defense rules are only suggested when a true attack pattern coincides with dangerous traffic volume.",
+        ]}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <ThresholdForm
-            key={thresholdData ? `${thresholdData.version}-${thresholdData.updated_at || ""}` : "default"}
             initialData={thresholdData}
+            loading={thresholdsLoading}
             onRefresh={refresh}
           />
         </div>
 
-        {/* Right Column: Model Metadata & Security Token */}
+        {/* Right Column: Model Information & API Token */}
         <div className="space-y-6">
           <Card>
             <CardHeader>
               <div>
-                <CardTitle className="font-mono">Active Model Metadata</CardTitle>
-                <CardDescription>Approved Phase 2 detection candidate</CardDescription>
+                <CardTitle>Active Model Information</CardTitle>
+                <CardDescription>Verified detection model in memory</CardDescription>
               </div>
               <Server className="w-5 h-5 text-[#00FF9D]" />
             </CardHeader>
-            <CardContent className="space-y-3 text-xs font-mono">
+            <CardContent className="space-y-3 text-xs">
               <div className="flex justify-between pb-2 border-b border-gray-800">
-                <span className="text-gray-400">Model Name:</span>
-                <span className="text-gray-100 font-bold">{modelDisplayName}</span>
-              </div>
-              <div className="flex justify-between pb-2 border-b border-gray-800">
-                <span className="text-gray-400">Model Version:</span>
-                <span className="text-[#00FF9D] font-bold">{modelVersion}</span>
-              </div>
-              <div className="flex justify-between pb-2 border-b border-gray-800">
-                <span className="text-gray-400">Validation Accuracy:</span>
-                <span className="text-[#10B981] font-bold">
-                  {activeMetrics?.accuracy ? `${(activeMetrics.accuracy * 100).toFixed(1)}%` : "99.4%"}
+                <span className="text-gray-400">Model Type:</span>
+                <span className="text-gray-100 font-bold font-mono">
+                  {primaryModel?.model_type || (modelLoading ? "Loading..." : "None")}
                 </span>
               </div>
               <div className="flex justify-between pb-2 border-b border-gray-800">
-                <span className="text-gray-400">F1 Score:</span>
-                <span className="text-[#06B6D4] font-bold">
-                  {activeMetrics?.f1 ? `${(activeMetrics.f1 * 100).toFixed(1)}%` : "99.2%"}
+                <span className="text-gray-400">Version:</span>
+                <span className="text-[#00FF9D] font-bold font-mono">
+                  {primaryModel?.model_version || (modelLoading ? "Loading..." : "N/A")}
                 </span>
+              </div>
+              <div className="flex justify-between pb-2 border-b border-gray-800">
+                <span className="text-gray-400">Benchmark Accuracy:</span>
+                <span className="text-[#10B981] font-bold font-mono">
+                  {modelMetrics?.rf_metrics?.accuracy !== undefined
+                    ? `${(modelMetrics.rf_metrics.accuracy * 100).toFixed(2)}%`
+                    : modelLoading
+                    ? "Loading..."
+                    : "Unavailable"}
+                </span>
+              </div>
+              <div className="flex justify-between pb-2 border-b border-gray-800">
+                <span className="text-gray-400">Features Checked:</span>
+                <span className="text-[#06B6D4] font-bold font-mono">14 NetFlow Features</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">Evaluation Mode:</span>
-                <span className="text-gray-300 uppercase">{modelStatus}</span>
+                <span className="text-gray-400">Status:</span>
+                <Badge variant={primaryModel?.status === "approved" ? "matrix" : "outline"} className="text-[10px]">
+                  {primaryModel?.status || (modelLoading ? "Checking..." : "Unverified")}
+                </Badge>
               </div>
             </CardContent>
           </Card>
@@ -428,14 +468,14 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <div>
-                <CardTitle className="font-mono flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2">
                   <Lock className="w-4 h-4 text-[#00FF9D]" />
-                  API Bearer Authentication
+                  API Authentication
                 </CardTitle>
-                <CardDescription>Session token used for protected mitigation & configuration endpoints</CardDescription>
+                <CardDescription>Session token used to authenticate with backend endpoints</CardDescription>
               </div>
             </CardHeader>
-            <CardContent className="space-y-3 font-mono text-xs">
+            <CardContent className="space-y-3 text-xs">
               {tokenSavedMsg && (
                 <div className="p-2.5 rounded-lg bg-[rgba(0,255,157,0.12)] border border-[#00FF9D]/40 text-[#00FF9D] flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#00FF9D] shrink-0" />
@@ -444,7 +484,7 @@ export default function SettingsPage() {
               )}
               <div>
                 <label htmlFor="auth-token-input" className="block text-gray-400 mb-1">
-                  API Token / Secret:
+                  API Bearer Token:
                 </label>
                 <input
                   id="auth-token-input"
@@ -452,10 +492,10 @@ export default function SettingsPage() {
                   value={authToken}
                   onChange={(e) => setAuthTokenState(e.target.value)}
                   placeholder="Paste SENTRIX API Token"
-                  className="w-full bg-[#090D16] border border-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-200 focus:border-[#00FF9D] focus:outline-none"
+                  className="w-full bg-[#090D16] border border-gray-700/60 rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
                 />
               </div>
-              <Button variant="outline" size="sm" onClick={handleUpdateToken} className="w-full">
+              <Button variant="outline" size="sm" onClick={handleUpdateToken} className="w-full font-sans text-xs">
                 Apply Token
               </Button>
             </CardContent>

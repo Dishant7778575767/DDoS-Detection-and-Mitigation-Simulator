@@ -272,11 +272,6 @@ export const api = {
     const qs = q.toString() ? `?${q.toString()}` : "";
     return fetchJson<AuditListResponse>(`/api/v1/audit${qs}`);
   },
-  getAuditCsvUrl: () => {
-    const token = getApiAuthToken();
-    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
-    return `${API_BASE_URL}/api/v1/audit?format=csv${tokenParam}`;
-  },
   downloadAuditCsv: async () => {
     const token = getApiAuthToken();
     const url = `${API_BASE_URL}/api/v1/audit?format=csv`;
@@ -343,8 +338,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ run_ids: runIds }),
     }),
-  getSimulationExportUrl: (runId: string, format: "json" | "markdown" | "csv" = "json") =>
-    `${API_BASE_URL}/api/v1/simulations/${encodeURIComponent(runId)}/export?format=${format}&token=${encodeURIComponent(currentToken)}`,
   downloadSimulationExport: async (runId: string, format: "csv" | "json" = "csv") => {
     const url = `${API_BASE_URL}/api/v1/simulations/${encodeURIComponent(runId)}/export?format=${format}`;
     const res = await fetch(url, {
@@ -404,11 +397,6 @@ export const api = {
       `/api/v1/mitigations/defensive/${encodeURIComponent(ruleId)}/revoke`,
       { method: "POST" }
     ),
-  getNginxExportUrl: () => {
-    const token = getApiAuthToken();
-    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `${API_BASE_URL}/api/v1/mitigations/export/nginx${tokenParam}`;
-  },
   downloadNginxConfig: async () => {
     const token = getApiAuthToken();
     const url = `${API_BASE_URL}/api/v1/mitigations/export/nginx`;
@@ -433,11 +421,6 @@ export const api = {
     document.body.removeChild(a);
     URL.revokeObjectURL(downloadUrl);
   },
-  getCaddyExportUrl: () => {
-    const token = getApiAuthToken();
-    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
-    return `${API_BASE_URL}/api/v1/mitigations/export/caddy${tokenParam}`;
-  },
   downloadCaddyConfig: async () => {
     const token = getApiAuthToken();
     const url = `${API_BASE_URL}/api/v1/mitigations/export/caddy`;
@@ -457,6 +440,99 @@ export const api = {
     const a = document.createElement("a");
     a.href = downloadUrl;
     a.download = "Caddyfile_sentrix.snippet";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+  },
+  getAwsKinesisStatus: () =>
+    fetchJson<{
+      status: string;
+      stream_name: string;
+      region: string;
+      started_at?: string | null;
+      last_poll_at?: string | null;
+      last_error?: string | null;
+      metrics: {
+        records_ingested_total: number;
+        records_duplicate_total: number;
+        records_poison_total: number;
+      };
+      shards: Record<
+        string,
+        {
+          last_sequence_number: string | null;
+          millis_behind_latest: number;
+          records_processed: number;
+          is_closed: boolean;
+        }
+      >;
+    }>("/api/v1/integrations/aws/kinesis/status"),
+  startAwsKinesisWorker: () =>
+    fetchJson<{ status: string; message: string }>("/api/v1/integrations/aws/kinesis/start", {
+      method: "POST",
+    }),
+  stopAwsKinesisWorker: () =>
+    fetchJson<{ status: string; message: string }>("/api/v1/integrations/aws/kinesis/stop", {
+      method: "POST",
+    }),
+  mockIngestAwsKinesis: (lines: string[], streamName = "mock-stream") =>
+    fetchJson<{
+      status: string;
+      accepted_count: number;
+      duplicate_count: number;
+      poison_count: number;
+    }>("/api/v1/integrations/aws/kinesis/mock-ingest", {
+      method: "POST",
+      body: JSON.stringify({
+        lines,
+        stream_name: streamName,
+        shard_id: "shardId-000000000000",
+      }),
+    }),
+  downloadAwsWafConfig: async () => {
+    const token = getApiAuthToken();
+    const url = `${API_BASE_URL}/api/v1/mitigations/export/aws-waf`;
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      throw new SentrixApiError(
+        `AWS WAF export failed: ${res.statusText}`,
+        `HTTP_${res.status}`
+      );
+    }
+    const blob = await res.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = "sentrix_aws_wafv2.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+  },
+  downloadAwsWafCli: async () => {
+    const token = getApiAuthToken();
+    const url = `${API_BASE_URL}/api/v1/mitigations/export/aws-waf/cli`;
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      throw new SentrixApiError(
+        `AWS WAF CLI export failed: ${res.statusText}`,
+        `HTTP_${res.status}`
+      );
+    }
+    const blob = await res.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = "sentrix_aws_waf_deploy.sh";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

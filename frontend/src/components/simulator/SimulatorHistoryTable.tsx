@@ -2,6 +2,8 @@
 
 import { Badge } from "@/components/ui/Badge";
 import { RotateCcw } from "@/components/ui/icons";
+import { Pagination } from "@/components/ui/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import type { SimulationRunSummary } from "@/types";
 
 interface SimulatorHistoryTableProps {
@@ -17,6 +19,15 @@ export function SimulatorHistoryTable({
   onRefresh,
   onLoadRun,
 }: SimulatorHistoryTableProps) {
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginatedItems: paginatedRuns,
+    setPage,
+    setPageSize,
+  } = usePagination(pastRuns, 5);
   return (
     <div className="bg-[#111827]/70 backdrop-blur-xl border border-gray-700/60 rounded-xl p-5 shadow-xl space-y-3 font-mono">
       <div className="flex items-center justify-between border-b border-gray-800 pb-2">
@@ -36,7 +47,8 @@ export function SimulatorHistoryTable({
       {pastRuns.length === 0 ? (
         <span className="text-xs text-gray-400 font-mono">No simulation runs recorded yet.</span>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-700/60 bg-[#090D16]">
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-lg border border-gray-700/60 bg-[#090D16]">
           <table className="w-full text-left text-xs font-mono" aria-label="Previous Simulation Runs">
             <thead>
               <tr className="text-gray-400 border-b border-gray-800 bg-[#1F2937]/50 text-[11px] uppercase">
@@ -48,7 +60,7 @@ export function SimulatorHistoryTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800/80">
-              {pastRuns.map((r) => (
+              {paginatedRuns.map((r) => (
                 <tr
                   key={r.run_id}
                   className={`hover:bg-[#1F2937]/40 transition-colors ${
@@ -89,6 +101,16 @@ export function SimulatorHistoryTable({
               ))}
             </tbody>
           </table>
+        </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[5, 10, 20]}
+        />
         </div>
       )}
     </div>

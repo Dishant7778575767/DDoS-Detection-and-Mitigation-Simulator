@@ -9,6 +9,7 @@ and that host networking remains completely untouched.
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,7 +33,7 @@ FIXTURES_PATH = (
 
 
 @pytest.fixture
-def db_session(tmp_path: Path) -> Session:
+def db_session(tmp_path: Path) -> Generator[Session, None, None]:
     db_file = tmp_path / "safety_test.db"
     engine = create_engine(f"sqlite:///{db_file}")
     Base.metadata.create_all(engine)

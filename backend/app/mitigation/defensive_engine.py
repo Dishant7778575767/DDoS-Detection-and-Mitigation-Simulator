@@ -19,7 +19,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from app.policy.allowlist import is_protected_target
+from app.policy.allowlist import PROTECTED_IPS, PROTECTED_NETWORKS, is_protected_target
 from app.safety.gate import is_emergency_disabled
 
 logger = logging.getLogger("sentrix.mitigation.defensive")
@@ -112,6 +112,34 @@ class DefensiveMitigationEngine:
         if not clean_target:
             raise ValueError("Target IP or CIDR cannot be empty.")
 
+        try:
+            target_network = ipaddress.ip_network(clean_target, strict=False)
+        except ValueError as exc:
+            raise ValueError(
+                "Target must be a valid IPv4/IPv6 address or CIDR."
+            ) from exc
+
+        if target_network.is_multicast or target_network.network_address.is_unspecified:
+            raise ValueError("Multicast and unspecified targets cannot be mitigated.")
+        if any(
+            target_network.version == network.version
+            and target_network.overlaps(network)
+            for network in PROTECTED_NETWORKS
+        ):
+            raise ValueError("Target overlaps a protected infrastructure network.")
+        if any(
+            ipaddress.ip_address(protected_ip).version == target_network.version
+            and ipaddress.ip_address(protected_ip) in target_network
+            for protected_ip in PROTECTED_IPS
+        ):
+            raise ValueError("Target includes a protected infrastructure address.")
+
+        clean_target = (
+            str(target_network.network_address)
+            if "/" not in clean_target
+            else target_network.with_prefixlen
+        )
+
         # Guard: Check allowlist / protected targets
         if is_protected_target(clean_target):
             raise ValueError(
@@ -122,6 +150,9 @@ class DefensiveMitigationEngine:
         ttl = max(30, min(86400, int(ttl_seconds)))  # 30s to 24h
         rule_id = f"def_{uuid4().hex[:10]}"
 
+        safe_reason = (
+            " ".join(reason.split())[:512] or "Suspicious traffic anomaly detected"
+        )
         rule = DefensiveMitigationRule(
             rule_id=rule_id,
             target_ip_or_cidr=clean_target,
@@ -132,7 +163,7 @@ class DefensiveMitigationEngine:
             created_at=now,
             expires_at=now + ttl,
             ttl_seconds=ttl,
-            reason=reason,
+            reason=safe_reason,
             approved_by=None if dry_run else "auto-approved",
         )
 

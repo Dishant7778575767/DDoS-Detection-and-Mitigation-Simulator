@@ -6,12 +6,13 @@ Generates bounded synthetic traffic flow observations for testing PRD scenarios:
 - TC-02: Abnormal burst (Threshold exceeded; alert only)
 - TC-03: Suspected SYN flood (Both signals trigger; request mitigation)
 - TC-04: Threshold signal only (Alert only; no mitigation)
+- DEMO-01 to DEMO-06: Quiet, steady, boundary, flag, byte-rate, and packet-rate cases
 - TC-13: ML signal only (Alert only; no mitigation)
 
 All generated flows are strictly marked with demonstration provenance ('demo-generator:').
 
 Usage:
-    python scripts/send_test_traffic.py [--scenario normal|burst|syn_flood|threshold_only|ml_only|all]
+    python scripts/send_test_traffic.py [--scenario normal|burst|syn_flood|threshold_only|ml_only|quiet|steady|boundary|psh_burst|byte_burst|high_rate|all]
                                         [--count 1] [--target-ip 192.168.1.150]
                                         [--api-url http://127.0.0.1:8000]
                                         [--token dev-only-change-me]
@@ -91,15 +92,30 @@ def run_generator(
     delay: float = 0.5,
 ) -> bool:
     fixtures = load_fixtures()["scenarios"]
+    scenario_aliases = {
+        "normal": "tc01_normal",
+        "burst": "tc02_abnormal_burst",
+        "syn_flood": "tc03_syn_flood",
+        "threshold_only": "tc04_threshold_only",
+        "ml_only": "tc13_ml_only",
+        "quiet": "demo01_quiet_benign",
+        "steady": "demo02_steady_benign",
+        "boundary": "demo03_threshold_boundary",
+        "psh_burst": "demo04_psh_threshold_only",
+        "byte_burst": "demo05_high_byte_rate",
+        "high_rate": "demo06_high_packet_rate",
+    }
     scenarios_to_run = (
-        list(fixtures.keys())
+        list(fixtures)
         if scenario_key == "all"
-        else [k for k in fixtures if scenario_key in k]
+        else [scenario_aliases[scenario_key]]
+        if scenario_key in scenario_aliases
+        else []
     )
 
     if not scenarios_to_run:
         print(
-            f"{RED}Error: Unknown scenario '{scenario_key}'. Available: {list(fixtures.keys())}{RESET}"
+            f"{RED}Error: Unknown scenario '{scenario_key}'. Available: {list(scenario_aliases)} or 'all'.{RESET}"
         )
         return False
 
@@ -177,7 +193,20 @@ def main() -> None:
     parser.add_argument(
         "--scenario",
         default="all",
-        choices=["all", "normal", "burst", "syn_flood", "threshold_only", "ml_only"],
+        choices=[
+            "all",
+            "normal",
+            "burst",
+            "syn_flood",
+            "threshold_only",
+            "ml_only",
+            "quiet",
+            "steady",
+            "boundary",
+            "psh_burst",
+            "byte_burst",
+            "high_rate",
+        ],
         help="Demonstration scenario to execute",
     )
     parser.add_argument(

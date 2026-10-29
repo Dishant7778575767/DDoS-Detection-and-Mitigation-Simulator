@@ -16,18 +16,52 @@ services:
       - APP_ENV=production
       - DATABASE_URL=sqlite:///./data/sentrix.db
       - API_AUTH_REQUIRED=${API_AUTH_REQUIRED:-true}
-      - API_AUTH_TOKEN=${API_AUTH_TOKEN:-sentrix-autonomous-defense-key-2026}
+      - API_AUTH_TOKEN=${API_AUTH_TOKEN:?Set API_AUTH_TOKEN in .env to a strong random value}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_KINESIS_STREAM_NAME=${AWS_KINESIS_STREAM_NAME:-sentrix-cloudfront-realtime-logs}
+      - AWS_KINESIS_CONSUMER_ENABLED=${AWS_KINESIS_CONSUMER_ENABLED:-false}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
       - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - sentrix_data:/app/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health -H \"Authorization: Bearer $${API_AUTH_TOKEN:-sentrix-autonomous-defense-key-2026}\" || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health -H \"Authorization: Bearer $${API_AUTH_TOKEN}\" || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
     networks:
       - sentrix-network
+
+  # ============================================================================
+  # SENTRIX CloudFront Kinesis Consumer Worker (Dedicated Streaming Service)
+  # ============================================================================
+  kinesis-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: sentrix-kinesis-worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.kinesis_worker"]
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=sqlite:///./data/sentrix.db
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_KINESIS_STREAM_NAME=${AWS_KINESIS_STREAM_NAME:-sentrix-cloudfront-realtime-logs}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+    volumes:
+      - sentrix_data:/app/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sentrix-network
+    profiles:
+      - aws-worker
 
   # ============================================================================
   # SENTRIX SOC Web Interface (Next.js 16 Standalone Dashboard)
@@ -44,8 +78,7 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_USE_PROXY=true
       - BACKEND_URL=http://backend:8000
-      - API_AUTH_TOKEN=${API_AUTH_TOKEN:-sentrix-autonomous-defense-key-2026}
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - API_AUTH_TOKEN=${API_AUTH_TOKEN:?Set API_AUTH_TOKEN in .env to a strong random value}
     depends_on:
       backend:
         condition: service_healthy
@@ -60,4 +93,3 @@ networks:
   sentrix-network:
     name: sentrix-net
     driver: bridge
-
