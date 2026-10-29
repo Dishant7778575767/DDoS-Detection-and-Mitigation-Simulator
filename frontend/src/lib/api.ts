@@ -27,6 +27,10 @@ import type {
   ThresholdConfigResponse,
   TrafficSummaryResponse,
   UpdateThresholdConfigRequest,
+  LiveTelemetrySummary,
+  ThreatClassificationResult,
+  DefensiveRule,
+  ProposeDefensiveRulePayload,
 } from "@/types";
 
 export * from "@/types";
@@ -37,7 +41,7 @@ const API_BASE_URL = USE_PROXY
   ? "/api/proxy"
   : process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 const DEFAULT_AUTH_TOKEN =
-  process.env.NEXT_PUBLIC_API_TOKEN || "7c4e9f2b1a8d3f6cf1b2c3d4e5f60789";
+  process.env.NEXT_PUBLIC_API_TOKEN || "";
 
 let currentToken: string =
   typeof window !== "undefined"
@@ -49,8 +53,9 @@ export function setApiAuthToken(token: string): void {
   if (typeof window !== "undefined") {
     try {
       localStorage.setItem("sentrix_api_token", token);
-    } catch {
+    } catch (err) {
       // Ignored in restricted environments
+      console.warn("Failed to persist auth token to localStorage:", err);
     }
   }
 }
@@ -267,7 +272,35 @@ export const api = {
     const qs = q.toString() ? `?${q.toString()}` : "";
     return fetchJson<AuditListResponse>(`/api/v1/audit${qs}`);
   },
-  getAuditCsvUrl: () => `${API_BASE_URL}/api/v1/audit?format=csv`,
+  getAuditCsvUrl: () => {
+    const token = getApiAuthToken();
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : "";
+    return `${API_BASE_URL}/api/v1/audit?format=csv${tokenParam}`;
+  },
+  downloadAuditCsv: async () => {
+    const token = getApiAuthToken();
+    const url = `${API_BASE_URL}/api/v1/audit?format=csv`;
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      throw new SentrixApiError(
+        `Audit CSV export failed: ${res.statusText}`,
+        `HTTP_${res.status}`
+      );
+    }
+    const blob = await res.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = `sentrix_audit_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+  },
 
   // 13 & 14. Threshold Config
   getThresholds: () => fetchJson<ThresholdConfigResponse>("/api/v1/config/thresholds"),
@@ -332,5 +365,103 @@ export const api = {
     document.body.removeChild(a);
     URL.revokeObjectURL(blobUrl);
   },
+  // 16. Real-Time Telemetry Pipeline (Milestone 1)
+  getLiveTelemetry: (windowSeconds = 10) =>
+    fetchJson<LiveTelemetrySummary>(`/api/v1/telemetry/summary?window_seconds=${windowSeconds}`),
+  ingestTelemetry: (payload: { items?: unknown[]; raw_logs?: string[]; anonymize_ips?: boolean }) =>
+    fetchJson<{ status: string; accepted_count: number; dropped_or_invalid_count: number }>(
+      "/api/v1/telemetry/ingress",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
+  resetTelemetry: () =>
+    fetchJson<{ status: string }>("/api/v1/telemetry/reset", { method: "POST" }),
+
+  // 17. Multi-Tier Threat Classification & Baselines (Milestone 2)
+  getLiveThreatAssessment: (windowSeconds = 10) =>
+    fetchJson<ThreatClassificationResult>(`/api/v1/detection/live?window_seconds=${windowSeconds}`),
+  getAdaptiveBaseline: () =>
+    fetchJson<Record<string, unknown>>("/api/v1/detection/baseline"),
+  resetAdaptiveBaseline: () =>
+    fetchJson<{ status: string }>("/api/v1/detection/baseline/reset", { method: "POST" }),
+
+  // 18. Defensive Mitigation Engine & Config Exporters (Milestone 3)
+  getDefensiveRules: (includeExpired = false) =>
+    fetchJson<DefensiveRule[]>(`/api/v1/mitigations/defensive/rules?include_expired=${includeExpired}`),
+  proposeDefensiveRule: (payload: ProposeDefensiveRulePayload) =>
+    fetchJson<DefensiveRule>("/api/v1/mitigations/defensive/propose", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  approveDefensiveRule: (ruleId: string) =>
+    fetchJson<DefensiveRule>(`/api/v1/mitigations/defensive/${encodeURIComponent(ruleId)}/approve`, {
+      method: "POST",
+    }),
+  revokeDefensiveRule: (ruleId: string) =>
+    fetchJson<{ status: string; rule_id: string }>(
+      `/api/v1/mitigations/defensive/${encodeURIComponent(ruleId)}/revoke`,
+      { method: "POST" }
+    ),
+  getNginxExportUrl: () => {
+    const token = getApiAuthToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `${API_BASE_URL}/api/v1/mitigations/export/nginx${tokenParam}`;
+  },
+  downloadNginxConfig: async () => {
+    const token = getApiAuthToken();
+    const url = `${API_BASE_URL}/api/v1/mitigations/export/nginx`;
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      throw new SentrixApiError(
+        `Nginx export failed: ${res.statusText}`,
+        `HTTP_${res.status}`
+      );
+    }
+    const blob = await res.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = "sentrix_nginx_defense.conf";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+  },
+  getCaddyExportUrl: () => {
+    const token = getApiAuthToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : "";
+    return `${API_BASE_URL}/api/v1/mitigations/export/caddy${tokenParam}`;
+  },
+  downloadCaddyConfig: async () => {
+    const token = getApiAuthToken();
+    const url = `${API_BASE_URL}/api/v1/mitigations/export/caddy`;
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      throw new SentrixApiError(
+        `Caddy export failed: ${res.statusText}`,
+        `HTTP_${res.status}`
+      );
+    }
+    const blob = await res.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = "Caddyfile_sentrix.snippet";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+  },
+
   getAuthToken: () => currentToken,
 };

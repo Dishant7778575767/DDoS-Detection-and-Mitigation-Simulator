@@ -2,63 +2,26 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 import { SimulationLiveChart } from "@/components/charts/SimulationLiveChart";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import {
   Activity,
-  Play,
-  Pause,
-  FastForward,
-  RotateCcw,
-  Square,
-  Download,
   AlertTriangle,
-  Zap,
-  Server,
-  Shield,
   CheckCircle2,
   Info,
+  Zap,
 } from "@/components/ui/icons";
+import { SimulatorConfigForm } from "@/components/simulator/SimulatorConfigForm";
+import { SimulatorControls } from "@/components/simulator/SimulatorControls";
+import { SimulatorHistoryTable } from "@/components/simulator/SimulatorHistoryTable";
+import { SimulatorScorecard } from "@/components/simulator/SimulatorScorecard";
+import { SimulatorTelemetryGrid } from "@/components/simulator/SimulatorTelemetryGrid";
 import type {
   ScenarioType,
   SimulationRunResponse,
   SimulationRunSummary,
   SimulationTickItem,
 } from "@/types";
-
-const SCENARIO_DESCRIPTIONS: Record<ScenarioType, { title: string; subtitle: string; desc: string }> = {
-  syn_flood: {
-    title: "Connection Overload Attack (SYN Flood)",
-    subtitle: "Spamming fake phone calls until the line goes busy",
-    desc: "Attackers send millions of half-open connection requests. The server waits endlessly for them to finish, running out of memory so real visitors cannot connect.",
-  },
-  udp_flood: {
-    title: "Bandwidth Choke Attack (UDP Flood)",
-    subtitle: "Clogging the internet pipe with giant junk data",
-    desc: "Blasts huge volumes of random data packets to exhaust network bandwidth. Real user traffic gets blocked by pure congestion.",
-  },
-  http_flood: {
-    title: "Website Overload Attack (HTTP Flood)",
-    subtitle: "Botnets hitting Refresh button millions of times",
-    desc: "A swarm of fake bots endlessly requests heavy web pages, draining server CPU and crashing the web application.",
-  },
-  low_and_slow: {
-    title: "Sneaky Stealth Attack (Slowloris)",
-    subtitle: "Creeping slowly under the radar without alarm bells",
-    desc: "Sends tiny fragments of data extremely slowly. Traditional volume alarms don't trigger, but server connections get locked up one by one.",
-  },
-  mixed: {
-    title: "Combined Multi-Vector Attack",
-    subtitle: "Simultaneous attack on bandwidth, connections, and website",
-    desc: "Combines connection overload, bandwidth flooding, and web spam simultaneously to test full AI defense resilience.",
-  },
-  flash_crowd: {
-    title: "Viral Traffic Spike (Safe Real Visitors - NOT an Attack!)",
-    subtitle: "Sudden wave of genuine happy users (e.g. viral news / sale)",
-    desc: "A massive surge of legitimate real customers. SENTRIX proves its AI intelligence by NEVER blocking real people by accident (zero false alarms).",
-  },
-};
 
 export default function SimulatorPage() {
   // Configuration State
@@ -86,6 +49,7 @@ export default function SimulatorPage() {
 
   // Polling ref for clock ticks
   const tickerRef = useRef<NodeJS.Timeout | null>(null);
+  const isSteppingTickerRef = useRef<boolean>(false);
 
   // Load run details & committed ticks
   const loadRunDetail = useCallback(async (runId: string) => {
@@ -100,7 +64,7 @@ export default function SimulatorPage() {
         setLatestTick(ticks[ticks.length - 1]);
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to load simulation run details");
+      setErrorMsg(getErrorMessage(err, "Failed to load simulation run details"));
     }
   }, []);
 
@@ -127,7 +91,7 @@ export default function SimulatorPage() {
         }
       } catch (err: unknown) {
         if (!ignore) {
-          setErrorMsg(err instanceof Error ? err.message : "Unable to load initial simulation runs from backend.");
+          setErrorMsg(getErrorMessage(err, "Unable to load initial simulation runs from backend."));
         }
       }
     }
@@ -139,19 +103,24 @@ export default function SimulatorPage() {
 
   // Real-time ticking execution loop when status === "running"
   useEffect(() => {
-    if (!activeRun || activeRun.status !== "running") {
+    const isRunning = activeRun?.status === "running";
+    const runId = activeRun?.run_id;
+    const speed = activeRun?.speed_multiplier ?? 1.0;
+
+    if (!isRunning || !runId) {
       if (tickerRef.current) clearInterval(tickerRef.current);
       return;
     }
 
-    // Dynamic tick delay according to virtual speed multiplier
     const tickIntervalMs =
-      activeRun.speed_multiplier >= 100.0 ? 50 : activeRun.speed_multiplier >= 10.0 ? 200 : 1000;
+      speed >= 100.0 ? 50 : speed >= 10.0 ? 200 : 1000;
 
     tickerRef.current = setInterval(async () => {
+      if (isSteppingTickerRef.current) return;
+      isSteppingTickerRef.current = true;
       try {
-        const ctrlRes = await api.controlSimulation(activeRun.run_id, "step");
-        await loadRunDetail(activeRun.run_id);
+        const ctrlRes = await api.controlSimulation(runId, "step");
+        await loadRunDetail(runId);
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("sentrix:shield_update"));
         }
@@ -163,13 +132,15 @@ export default function SimulatorPage() {
         if (process.env.NODE_ENV === "development") {
           console.warn("Simulation clock step paused/offline:", err instanceof Error ? err.message : err);
         }
+      } finally {
+        isSteppingTickerRef.current = false;
       }
     }, tickIntervalMs);
 
     return () => {
       if (tickerRef.current) clearInterval(tickerRef.current);
     };
-  }, [activeRun, loadRunDetail, refreshPastRuns]);
+  }, [activeRun?.status, activeRun?.run_id, activeRun?.speed_multiplier, loadRunDetail, refreshPastRuns]);
 
   // Create new simulation run
   const handleCreateRun = async () => {
@@ -205,7 +176,7 @@ export default function SimulatorPage() {
       await refreshPastRuns();
       setStatusMessage(`New simulation run created: ${newRun.run_id}. Click "Start Attack" to begin!`);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to create simulation run");
+      setErrorMsg(getErrorMessage(err, "Failed to create simulation run"));
     } finally {
       setLoading(false);
     }
@@ -239,7 +210,7 @@ export default function SimulatorPage() {
         setStatusMessage("Simulation reset back to tick 0. Ready for new run!");
       }
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : `Action ${action} failed`);
+      setErrorMsg(getErrorMessage(err, `Action ${action} failed`));
     } finally {
       setIsStepping(false);
     }
@@ -255,43 +226,26 @@ export default function SimulatorPage() {
       await api.downloadSimulationExport(activeRun.run_id, format);
       setStatusMessage(`Exported simulation ${activeRun.run_id} as ${format.toUpperCase()}`);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : `Failed to export ${format}`);
+      setErrorMsg(getErrorMessage(err, `Failed to export ${format}`));
     } finally {
       if (format === "csv") setIsExportingCsv(false);
       else setIsExportingJson(false);
     }
   };
 
-  const selectedScenarioInfo = SCENARIO_DESCRIPTIONS[scenarioType] || SCENARIO_DESCRIPTIONS.syn_flood;
-
-  // Determine availability color & friendly message
-  const currentAvail = latestTick?.availability_pct ?? 100.0;
-  let availColor = "text-[#10B981]";
-  let availBg = "bg-[rgba(16,185,129,0.1)] border-emerald-500/40";
-  let availStatusText = "Server Healthy (All users connected)";
-
-  if (currentAvail < 60) {
-    availColor = "text-[#EF4444]";
-    availBg = "bg-[rgba(239,68,68,0.15)] border-red-500/40";
-    availStatusText = "Severe Outage (Server down - dropping requests)";
-  } else if (currentAvail < 90) {
-    availColor = "text-[#F59E0B]";
-    availBg = "bg-[rgba(245,158,11,0.12)] border-amber-500/40";
-    availStatusText = "Slow Response (High load - degraded)";
-  }
-
-  // Virtual progress calculation
-  const totalTicks = activeRun?.total_ticks ?? 60;
-  const currentTick = activeRun?.current_tick ?? 0;
-  const progressPct = Math.min(100, Math.round((currentTick / Math.max(1, totalTicks)) * 100));
-
   // Derived real-time AI attack detection and mitigation metrics
   const attackStartTick = recentTicks.find((t) => (t.offered_attack_pps || 0) > 0)?.tick;
   const firstDetectedTick = recentTicks.find(
-    (t) => (t.offered_attack_pps || 0) > 0 && (t.prediction === "suspicious" || t.policy_action === "alert" || t.policy_action === "request_mitigation")
+    (t) =>
+      (t.offered_attack_pps || 0) > 0 &&
+      (t.prediction === "suspicious" ||
+        t.policy_action === "alert" ||
+        t.policy_action === "request_mitigation")
   )?.tick;
   const firstMitigatedTick = recentTicks.find(
-    (t) => (t.offered_attack_pps || 0) > 0 && ((t.dropped_attack_pps || 0) > 0 || (t.active_mitigations_count || 0) > 0)
+    (t) =>
+      (t.offered_attack_pps || 0) > 0 &&
+      ((t.dropped_attack_pps || 0) > 0 || (t.active_mitigations_count || 0) > 0)
   )?.tick;
 
   const totalOfferedAttack = recentTicks.reduce((acc, t) => acc + (t.offered_attack_pps || 0), 0);
@@ -299,23 +253,31 @@ export default function SimulatorPage() {
   const totalOfferedLegit = recentTicks.reduce((acc, t) => acc + (t.offered_legit_pps || 0), 0);
   const totalDroppedLegit = recentTicks.reduce((acc, t) => acc + (t.dropped_legit_pps || 0), 0);
 
-  const liveBlockedPct = totalOfferedAttack > 0
-    ? Math.min(100, Math.round((totalDroppedAttack / totalOfferedAttack) * 100))
-    : latestTick && (latestTick.offered_attack_pps || 0) > 0
-    ? Math.min(100, Math.round(((latestTick.dropped_attack_pps || 0) / latestTick.offered_attack_pps) * 100))
-    : 0;
+  const liveBlockedPct =
+    totalOfferedAttack > 0
+      ? Math.min(100, Math.round((totalDroppedAttack / totalOfferedAttack) * 100))
+      : latestTick && (latestTick.offered_attack_pps || 0) > 0
+      ? Math.min(
+          100,
+          Math.round(((latestTick.dropped_attack_pps || 0) / latestTick.offered_attack_pps) * 100)
+        )
+      : 0;
 
-  const aiTimeToDetectSeconds = activeRun?.scorecard?.time_to_detect_seconds !== null && activeRun?.scorecard?.time_to_detect_seconds !== undefined
-    ? activeRun.scorecard.time_to_detect_seconds
-    : (attackStartTick !== undefined && firstDetectedTick !== undefined)
-    ? Math.max(0, firstDetectedTick - attackStartTick)
-    : null;
+  const aiTimeToDetectSeconds =
+    activeRun?.scorecard?.time_to_detect_seconds !== null &&
+    activeRun?.scorecard?.time_to_detect_seconds !== undefined
+      ? activeRun.scorecard.time_to_detect_seconds
+      : attackStartTick !== undefined && firstDetectedTick !== undefined
+      ? Math.max(0, firstDetectedTick - attackStartTick)
+      : null;
 
-  const aiTimeToMitigateSeconds = activeRun?.scorecard?.time_to_mitigate_seconds !== null && activeRun?.scorecard?.time_to_mitigate_seconds !== undefined
-    ? activeRun.scorecard.time_to_mitigate_seconds
-    : (attackStartTick !== undefined && firstMitigatedTick !== undefined)
-    ? Math.max(0, firstMitigatedTick - attackStartTick)
-    : null;
+  const aiTimeToMitigateSeconds =
+    activeRun?.scorecard?.time_to_mitigate_seconds !== null &&
+    activeRun?.scorecard?.time_to_mitigate_seconds !== undefined
+      ? activeRun.scorecard.time_to_mitigate_seconds
+      : attackStartTick !== undefined && firstMitigatedTick !== undefined
+      ? Math.max(0, firstMitigatedTick - attackStartTick)
+      : null;
 
   const isShieldActive =
     latestTick?.policy_action === "request_mitigation" ||
@@ -325,12 +287,27 @@ export default function SimulatorPage() {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner: Synthetic Disclaimer & Safety Guarantee */}
-      
+      {/* Cyber Range Header Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-gray-800">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold font-mono text-gray-100 flex items-center gap-2">
+              <Zap className="w-6 h-6 text-[#00FF9D]" />
+              Cyber Range & Chaos Testbed Lab
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-[#00FF9D]/15 text-[#00FF9D] border border-[#00FF9D]/40">
+              Isolated Lab
+            </span>
+          </div>
+          <p className="text-sm text-gray-400 mt-1">
+            Simulate realistic DDoS attack vectors (SYN/UDP/HTTP floods, Slowloris, Flash Crowds) to calibrate detection thresholds in virtual memory.
+          </p>
+        </div>
+      </div>
 
       {/* Notifications */}
       {errorMsg && (
-        <div className="bg-[rgba(239,68,68,0.15)] border border-red-500/40 text-[#EF4444] p-3.5 rounded-xl text-xs flex items-center gap-2 font-mono">
+        <div className="bg-red-500/15 border border-red-500/40 text-[#EF4444] p-3.5 rounded-xl text-xs flex items-center gap-2 font-mono">
           <AlertTriangle className="w-4 h-4 text-[#EF4444] shrink-0" />
           <span>{errorMsg}</span>
         </div>
@@ -345,455 +322,55 @@ export default function SimulatorPage() {
       {/* Main Grid: Left Setup Column & Right Active Controls / Live Dashboard */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start h-fit">
         {/* Left Column: Easy Setup Form */}
-        <div className="bg-[rgba(31,41,55,0.6)] backdrop-blur-xl border border-[rgba(75,85,99,0.3)] rounded-xl p-5 shadow-xl space-y-4 h-fit">
-          <div className="border-b border-[rgba(75,85,99,0.3)] pb-2">
-            <h2 className="text-sm font-bold text-gray-100 flex items-center gap-2 font-mono">
-              <Zap className="w-4 h-4 text-[#00FF9D]" />
-              Choose Traffic Scenario to Test
-            </h2>
-            <p className="text-[11px] text-[#9CA3AF] mt-0.5 font-sans">
-              Pick an attack to test AI detection, or pick Safe Surge to see how normal visitors are protected.
-            </p>
-          </div>
-
-          {/* Scenario Select */}
-          <div>
-            <label className="block text-xs font-medium text-gray-200 mb-1 font-mono">
-              Attack Scenario
-            </label>
-            <select
-              value={scenarioType}
-              onChange={(e) => setScenarioType(e.target.value as ScenarioType)}
-              className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:outline-none focus:border-[#00FF9D]"
-            >
-              <option value="syn_flood">SYN Flood (TCP Connection Overload)</option>
-              <option value="udp_flood">UDP Amplification (Massive Bandwidth)</option>
-              <option value="http_flood">HTTP GET Flood (Web Application)</option>
-              <option value="low_and_slow">Low-and-Slow (Slowloris Stealth)</option>
-              <option value="mixed">Mixed Multi-Vector (Combined Attack)</option>
-              <option value="flash_crowd">Flash Crowd (Safe Spike - No Attack)</option>
-            </select>
-
-            {/* Scenario explanation box */}
-            <div className="mt-2 p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)] text-xs font-mono">
-              <div className="text-[#00FF9D] font-bold text-[11px] flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5" />
-                {selectedScenarioInfo.subtitle}
-              </div>
-              <p className="text-[11px] text-[#9CA3AF] mt-1 leading-relaxed font-sans">
-                {selectedScenarioInfo.desc}
-              </p>
-            </div>
-          </div>
-
-          {/* Duration & Seed */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-200 mb-1 font-mono">
-                Duration (Seconds)
-              </label>
-              <input
-                suppressHydrationWarning
-                autoComplete="off"
-                type="number"
-                min={10}
-                max={300}
-                value={durationSeconds}
-                onChange={(e) => setDurationSeconds(Number(e.target.value))}
-                className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
-              />
-              <span className="text-[10px] text-[#9CA3AF]/60 font-mono">Ticks (10s - 300s)</span>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-200 mb-1 font-mono">
-                Random Seed
-              </label>
-              <input
-                suppressHydrationWarning
-                autoComplete="off"
-                type="number"
-                value={seed}
-                onChange={(e) => setSeed(Number(e.target.value))}
-                className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
-              />
-              <span className="text-[10px] text-[#9CA3AF]/60 font-mono">Deterministic repeat</span>
-            </div>
-          </div>
-
-          {/* Attack Peak PPS & Playback Speed */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-200 mb-1 font-mono">
-                Attack Ingress (PPS)
-              </label>
-              <input
-                suppressHydrationWarning
-                autoComplete="off"
-                type="number"
-                step={500}
-                min={1000}
-                max={50000}
-                value={attackPeakPps}
-                onChange={(e) => setAttackPeakPps(Number(e.target.value))}
-                className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
-              />
-              <span className="text-[10px] text-[#9CA3AF]/60 font-mono">Peak attack PPS</span>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-200 mb-1 font-mono">
-                Playback Speed
-              </label>
-              <select
-                value={speedMultiplier}
-                onChange={(e) => setSpeedMultiplier(Number(e.target.value))}
-                className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
-              >
-                <option value={1.0}>1x (Realtime - 1s/tick)</option>
-                <option value={10.0}>10x (Fast - 0.2s/tick)</option>
-                <option value={100.0}>100x (Instant Replay)</option>
-              </select>
-              <span className="text-[10px] text-[#9CA3AF]/60 font-mono">Clock multiplier</span>
-            </div>
-          </div>
-
-          {/* Target Victim Capacity */}
-          <div className="border-t border-[rgba(75,85,99,0.3)] pt-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="block text-xs font-bold text-[#00FF9D] font-mono">
-                Target Hardware Capacity Limits
-              </span>
-
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="flex justify-between items-baseline mb-0.5">
-                  <label className="block text-[11px] text-gray-200 font-mono font-medium">Bandwidth (Mbps)</label>
-                </div>
-                <input
-                  suppressHydrationWarning
-                  autoComplete="off"
-                  type="number"
-                  min={1}
-                  max={10000}
-                  value={bandwidthMbps}
-                  onChange={(e) => setBandwidthMbps(Number(e.target.value))}
-                  className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
-                />
-                <span className="text-[9px] text-[#9CA3AF]/70 font-sans block mt-0.5">
-                  Max pipe throughput (100 Mbps default)
-                </span>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-baseline mb-0.5">
-                  <label className="block text-[11px] text-gray-200 font-mono font-medium">CPU Capacity (PPS)</label>
-                </div>
-                <input
-                  suppressHydrationWarning
-                  autoComplete="off"
-                  type="number"
-                  step={500}
-                  min={100}
-                  max={1000000}
-                  value={cpuCapacityPps}
-                  onChange={(e) => setCpuCapacityPps(Number(e.target.value))}
-                  className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
-                />
-                <span className="text-[9px] text-[#9CA3AF]/70 font-sans block mt-0.5">
-                  Max packets server CPU can handle
-                </span>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-baseline mb-0.5">
-                  <label className="block text-[11px] text-gray-200 font-mono font-medium">Max Connections</label>
-                </div>
-                <input
-                  suppressHydrationWarning
-                  autoComplete="off"
-                  type="number"
-                  step={1000}
-                  min={100}
-                  max={1000000}
-                  value={maxConnections}
-                  onChange={(e) => setMaxConnections(Number(e.target.value))}
-                  className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
-                />
-                <span className="text-[9px] text-[#9CA3AF]/70 font-sans block mt-0.5">
-                  SYN table connection slots (10k default)
-                </span>
-              </div>
-
-              <div>
-                <div className="flex justify-between items-baseline mb-0.5">
-                  <label className="block text-[11px] text-gray-200 font-mono font-medium">Max Latency Cap (ms)</label>
-                </div>
-                <input
-                  suppressHydrationWarning
-                  autoComplete="off"
-                  type="number"
-                  step={500}
-                  min={500}
-                  max={30000}
-                  value={maxLatencyMs}
-                  onChange={(e) => setMaxLatencyMs(Number(e.target.value))}
-                  className="w-full bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
-                />
-                <span className="text-[9px] text-[#9CA3AF]/70 font-sans block mt-0.5">
-                  Max timeout ceiling under heavy congestion
-                </span>
-              </div>
-            </div>
-
-            {/* Quick Reference Guide Table for Recruiters */}
-            <div className="mt-3 p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)] space-y-2">
-              <span className="text-[10px] font-mono text-[#00FF9D] font-bold uppercase tracking-wider block">
-                Hardware Limits & Crash Thresholds:
-              </span>
-              <div className="space-y-1.5 text-[10px] font-mono text-[#9CA3AF]">
-                <div className="flex items-start justify-between gap-2 border-b border-[rgba(75,85,99,0.2)] pb-1">
-                  <span className="text-gray-300 font-medium">Bandwidth (100M - 10G):</span>
-                  <span className="text-right text-[#9CA3AF]/80">Traffic exceed hone par pipe choke & packet drops hote hain.</span>
-                </div>
-                <div className="flex items-start justify-between gap-2 border-b border-[rgba(75,85,99,0.2)] pb-1">
-                  <span className="text-gray-300 font-medium">CPU Throughput (5k - 1M PPS):</span>
-                  <span className="text-right text-[#9CA3AF]/80">Queue fill hone par server availability girkar 0% ho jaati hai.</span>
-                </div>
-                <div className="flex items-start justify-between gap-2 border-b border-[rgba(75,85,99,0.2)] pb-1">
-                  <span className="text-gray-300 font-medium">Max Connections (10k slots):</span>
-                  <span className="text-right text-[#9CA3AF]/80">SYN Flood table fill karke real users ko block karta hai.</span>
-                </div>
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-gray-300 font-medium">Max Latency Cap (5s - 30s):</span>
-                  <span className="text-right text-[#9CA3AF]/80">Severe congestion me request timeout ceiling trigger hoti hai.</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Create Button */}
-          <Button
-            variant="primary"
-            onClick={handleCreateRun}
-            disabled={loading}
-            className="w-full py-2.5 text-xs font-bold uppercase tracking-wider"
-          >
-            <Zap className="w-4 h-4" />
-            {loading ? "Initializing Virtual Session..." : "Initialize Simulation Run"}
-          </Button>
-        </div>
+        <SimulatorConfigForm
+          scenarioType={scenarioType}
+          setScenarioType={setScenarioType}
+          seed={seed}
+          setSeed={setSeed}
+          durationSeconds={durationSeconds}
+          setDurationSeconds={setDurationSeconds}
+          attackPeakPps={attackPeakPps}
+          setAttackPeakPps={setAttackPeakPps}
+          speedMultiplier={speedMultiplier}
+          setSpeedMultiplier={setSpeedMultiplier}
+          bandwidthMbps={bandwidthMbps}
+          setBandwidthMbps={setBandwidthMbps}
+          cpuCapacityPps={cpuCapacityPps}
+          setCpuCapacityPps={setCpuCapacityPps}
+          maxConnections={maxConnections}
+          setMaxConnections={setMaxConnections}
+          maxLatencyMs={maxLatencyMs}
+          setMaxLatencyMs={setMaxLatencyMs}
+          loading={loading}
+          onCreateRun={handleCreateRun}
+        />
 
         {/* Right 2 Columns: Active Controls, Live Metrics & Live Chart */}
         <div className="lg:col-span-2 space-y-5 h-fit">
           {activeRun ? (
-            <div className="bg-[rgba(31,41,55,0.6)] backdrop-blur-xl border border-[rgba(75,85,99,0.3)] rounded-xl p-5 shadow-xl space-y-5">
-              {/* Top Control Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(75,85,99,0.3)] pb-4">
-                <div>
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-sm font-mono text-[#00FF9D] font-bold">{activeRun.run_id}</span>
-                    <span
-                      className={`text-[10px] uppercase font-mono px-2.5 py-0.5 rounded-full font-bold border ${
-                        activeRun.status === "running"
-                          ? "bg-[rgba(239,68,68,0.2)] text-[#EF4444] border-red-500/40 animate-pulse"
-                          : activeRun.status === "completed"
-                          ? "bg-[rgba(0,255,157,0.15)] text-[#00FF9D] border-[#00FF9D]/40"
-                          : activeRun.status === "paused"
-                          ? "bg-[rgba(245,158,11,0.2)] text-[#F59E0B] border-amber-500/40"
-                          : "bg-[#1F2937] text-[#9CA3AF] border-[rgba(75,85,99,0.4)]"
-                      }`}
-                    >
-                      ● {activeRun.status}
-                    </span>
-                  </div>
-                  <div className="text-xs text-[#9CA3AF] font-mono mt-0.5">
-                    Attack: <strong className="text-gray-100">{activeRun.scenario_type}</strong> · Speed:{" "}
-                    <strong>{activeRun.speed_multiplier}x</strong> · Seed: {activeRun.seed}
-                  </div>
-                </div>
+            <div className="bg-[#111827]/70 backdrop-blur-xl border border-gray-700/60 rounded-xl p-5 shadow-xl space-y-5">
+              <SimulatorControls
+                activeRun={activeRun}
+                isStepping={isStepping}
+                isExportingCsv={isExportingCsv}
+                isExportingJson={isExportingJson}
+                onControl={handleControl}
+                onExport={handleExport}
+              />
 
-                {/* Lifecycle Action Buttons */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Start / Resume */}
-                  {activeRun.status !== "running" &&
-                    activeRun.status !== "completed" &&
-                    activeRun.status !== "cancelled" && (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleControl(activeRun.status === "paused" ? "resume" : "start")}
-                      >
-                        <Play className="w-3.5 h-3.5" />
-                        {activeRun.status === "paused" ? "Resume" : "Start Attack"}
-                      </Button>
-                    )}
-
-                  {/* Pause */}
-                  {activeRun.status === "running" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleControl("pause")}
-                    >
-                      <Pause className="w-3.5 h-3.5" />
-                      Pause
-                    </Button>
-                  )}
-
-                  {/* Single Step */}
-                  {activeRun.status !== "completed" && activeRun.status !== "cancelled" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleControl("step")}
-                      disabled={isStepping}
-                    >
-                      <FastForward className="w-3.5 h-3.5 text-[#00FF9D]" />
-                      {isStepping ? "Stepping..." : "Step +1s"}
-                    </Button>
-                  )}
-
-                  {/* Cancel / Stop */}
-                  {activeRun.status !== "completed" && activeRun.status !== "cancelled" && (
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleControl("cancel")}
-                    >
-                      <Square className="w-3 h-3" />
-                      Stop
-                    </Button>
-                  )}
-
-                  {/* Reset */}
-                  {(activeRun.status === "completed" ||
-                    activeRun.status === "cancelled" ||
-                    activeRun.status === "paused") && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleControl("reset")}
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      Reset
-                    </Button>
-                  )}
-
-                  {/* Export Buttons */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    loading={isExportingCsv}
-                    onClick={() => handleExport("csv")}
-                  >
-                    <Download className="w-3.5 h-3.5 text-[#00FF9D]" />
-                    Export CSV
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    loading={isExportingJson}
-                    onClick={() => handleExport("json")}
-                  >
-                    <Download className="w-3.5 h-3.5 text-[#06B6D4]" />
-                    Export JSON
-                  </Button>
-                </div>
-              </div>
-
-              {/* Virtual Progress Bar */}
-              <div className="space-y-1.5 font-mono">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-200 font-medium">
-                    Simulation Progress: {progressPct}%
-                  </span>
-                  <span className="text-[#9CA3AF]">
-                    Tick {currentTick} / {totalTicks} seconds
-                  </span>
-                </div>
-                <div className="w-full bg-[#090D16] h-2.5 rounded-full overflow-hidden border border-[rgba(75,85,99,0.3)]">
-                  <div
-                    className={`h-full transition-all duration-300 rounded-full ${
-                      activeRun.status === "running" ? "bg-[#EF4444] shadow-[0_0_12px_#EF4444]" : "bg-[#00FF9D] shadow-[0_0_12px_#00FF9D]"
-                    }`}
-                    style={{ width: `${progressPct}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* 4 Live QoS Telemetry Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {/* 1. Server Availability */}
-                <div className={`p-3 rounded-xl border ${availBg}`}>
-                  <div className="flex items-center justify-between text-[11px] font-mono text-[#9CA3AF] mb-1">
-                    <span>Target Health</span>
-                    <Activity className="w-3.5 h-3.5" />
-                  </div>
-                  <div className={`text-xl font-bold font-mono ${availColor}`}>
-                    {currentAvail.toFixed(1)}%
-                  </div>
-                  <div className="text-[10px] text-[#9CA3AF] mt-1 truncate" title={availStatusText}>
-                    {availStatusText}
-                  </div>
-                </div>
-
-                {/* 2. Latency */}
-                <div className="bg-[#090D16] border border-[rgba(75,85,99,0.3)] p-3 rounded-xl">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-[#9CA3AF] mb-1">
-                    <span>P95 Latency</span>
-                    <Server className="w-3.5 h-3.5 text-[#06B6D4]" />
-                  </div>
-                  <div className="text-xl font-bold font-mono text-[#06B6D4]">
-                    {latestTick?.latency_ms ? `${latestTick.latency_ms.toFixed(1)} ms` : "15.0 ms"}
-                  </div>
-                  <div className="text-[10px] text-[#9CA3AF]/60 mt-1">
-                    {latestTick && latestTick.latency_ms > 35 ? "Queue Congested" : "Normal Latency"}
-                  </div>
-                </div>
-
-                {/* 3. Attack Traffic */}
-                <div className="bg-[#090D16] border border-[rgba(75,85,99,0.3)] p-3 rounded-xl">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-[#9CA3AF] mb-1">
-                    <span>Attack Ingress</span>
-                    <AlertTriangle className="w-3.5 h-3.5 text-[#EF4444]" />
-                  </div>
-                  <div className="text-xl font-bold font-mono text-[#EF4444]">
-                    {latestTick?.offered_attack_pps ? `${Math.round(latestTick.offered_attack_pps).toLocaleString()} PPS` : "0 PPS"}
-                  </div>
-                  <div className="text-[10px] text-[#00FF9D] mt-1 font-mono">
-                    Dropped: {latestTick ? Math.round(latestTick.dropped_attack_pps).toLocaleString() : 0} PPS ({liveBlockedPct}%)
-                  </div>
-                </div>
-
-                {/* 4. Policy Defense Action */}
-                <div className="bg-[#090D16] border border-[rgba(75,85,99,0.3)] p-3 rounded-xl">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-[#9CA3AF] mb-1">
-                    <span>Defense Shield</span>
-                    <Shield className={`w-3.5 h-3.5 ${isShieldActive ? "text-[#00FF9D] animate-pulse" : "text-[#00FF9D]"}`} />
-                  </div>
-                  <div className="text-xs font-bold font-mono text-[#00FF9D] uppercase mt-1">
-                    {isShieldActive
-                      ? "Rate Limiting Active"
-                      : latestTick?.policy_action === "alert"
-                      ? "Alert Triggered"
-                      : "Monitoring Normal"}
-                  </div>
-                  <div className="text-[10px] text-[#9CA3AF]/60 mt-1 font-mono">
-                    Active Rules: {latestTick?.active_mitigations_count ?? (isShieldActive ? 1 : 0)}
-                  </div>
-                </div>
-              </div>
+              <SimulatorTelemetryGrid
+                latestTick={latestTick}
+                liveBlockedPct={liveBlockedPct}
+                isShieldActive={isShieldActive}
+              />
 
               {/* Dynamic Live Attack & Defense Chart */}
-              <div className="bg-[#090D16] border border-[rgba(75,85,99,0.3)] rounded-xl p-4 space-y-2">
-                <div className="flex items-center justify-between border-b border-[rgba(75,85,99,0.2)] pb-2">
-                  <div>
-                    <h3 className="text-xs font-bold text-gray-100 flex items-center gap-2 font-mono">
-                      <Activity className="w-4 h-4 text-[#00FF9D]" />
-                      Real-time Chaos Telemetry Stream
-                    </h3>
-                  </div>
+              <div className="bg-[#090D16] border border-gray-700/60 rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                  <h3 className="text-xs font-bold text-gray-100 flex items-center gap-2 font-mono">
+                    <Activity className="w-4 h-4 text-[#00FF9D]" />
+                    Real-time Chaos Telemetry Stream
+                  </h3>
                   <span className="text-[11px] font-mono text-[#00FF9D]">
                     {recentTicks.length} ticks recorded
                   </span>
@@ -801,189 +378,36 @@ export default function SimulatorPage() {
                 <SimulationLiveChart ticks={recentTicks} />
               </div>
 
-              {/* Ground Truth Scorecard (Live Telemetry & Final Report) */}
+              {/* Ground Truth Scorecard */}
               {(activeRun.scorecard || recentTicks.length >= 3) && (
-                <div className="bg-linear-to-br from-[#1F2937]/70 to-[#090D16] border border-[rgba(0,255,157,0.35)] rounded-xl p-5 space-y-4 shadow-xl">
-                  <div className="flex items-center justify-between border-b border-[rgba(75,85,99,0.3)] pb-2">
-                    <div>
-                      <h3 className="text-xs uppercase font-bold tracking-wider text-[#00FF9D] flex items-center gap-2 font-mono">
-                        <CheckCircle2 className="w-4 h-4 text-[#00FF9D]" />
-                        AI Defense Report Card {activeRun.status === "completed" ? "(Final Results)" : "(Live Attack Telemetry)"}
-                      </h3>
-                      <p className="text-[11px] text-[#9CA3AF] font-sans">
-                        AI threat detection speed, mitigation ratio, and legitimate user preservation
-                      </p>
-                    </div>
-                    <Badge variant={activeRun.status === "completed" ? "matrix" : "cyan"}>
-                      {activeRun.status === "completed" ? "AI VERIFIED RESULT" : "LIVE AI DEFENSE METRICS"}
-                    </Badge>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
-                    <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
-                      <span className="text-[#9CA3AF] block text-[10px]">How Fast AI Detected:</span>
-                      <strong className="text-gray-100 text-sm">
-                        {activeRun.scorecard?.time_to_detect_seconds !== null && activeRun.scorecard?.time_to_detect_seconds !== undefined
-                          ? `${activeRun.scorecard.time_to_detect_seconds}s`
-                          : aiTimeToDetectSeconds !== null
-                          ? `${aiTimeToDetectSeconds}s`
-                          : "Instant / Safe"}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
-                      <span className="text-[#9CA3AF] block text-[10px]">How Fast Shield Blocked:</span>
-                      <strong className="text-[#06B6D4] text-sm">
-                        {activeRun.scorecard?.time_to_mitigate_seconds !== null && activeRun.scorecard?.time_to_mitigate_seconds !== undefined
-                          ? `${activeRun.scorecard.time_to_mitigate_seconds}s`
-                          : aiTimeToMitigateSeconds !== null
-                          ? `${aiTimeToMitigateSeconds}s`
-                          : "Immediate (<1s)"}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
-                      <span className="text-[#9CA3AF] block text-[10px]">Attack Traffic Stopped:</span>
-                      <strong className="text-[#00FF9D] text-sm">
-                        {activeRun.scorecard?.attack_traffic_blocked_pct !== null && activeRun.scorecard?.attack_traffic_blocked_pct !== undefined
-                          ? `${activeRun.scorecard.attack_traffic_blocked_pct}%`
-                          : liveBlockedPct !== null
-                          ? `${liveBlockedPct}%`
-                          : "100%"}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
-                      <span className="text-[#9CA3AF] block text-[10px]">Safe Real Visitors Saved:</span>
-                      <strong className="text-[#10B981] text-sm">
-                        {activeRun.scorecard?.collateral_legitimate_pct !== null && activeRun.scorecard?.collateral_legitimate_pct !== undefined
-                          ? `${(100 - activeRun.scorecard.collateral_legitimate_pct).toFixed(1)}%`
-                          : totalOfferedLegit > 0
-                          ? `${(100 - (totalDroppedLegit / totalOfferedLegit) * 100).toFixed(1)}%`
-                          : "100%"}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
-                      <span className="text-[#9CA3AF] block text-[10px]">Website Downtime:</span>
-                      <strong className="text-[#EF4444] text-sm">
-                        {activeRun.scorecard?.downtime_seconds ?? recentTicks.filter((t) => t.availability_pct < 80).length}s (Zero Crash)
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
-                      <span className="text-[#9CA3AF] block text-[10px]">AI Accuracy (Precision):</span>
-                      <strong className="text-[#00FF9D] text-sm">
-                        {activeRun.scorecard?.precision !== null && activeRun.scorecard?.precision !== undefined
-                          ? `${Math.round(activeRun.scorecard.precision * 100)}%`
-                          : "100%"}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
-                      <span className="text-[#9CA3AF] block text-[10px]">Threat Catch Rate (Recall):</span>
-                      <strong className="text-[#00FF9D] text-sm">
-                        {activeRun.scorecard?.recall !== null && activeRun.scorecard?.recall !== undefined
-                          ? `${Math.round(activeRun.scorecard.recall * 100)}%`
-                          : "100%"}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
-                      <span className="text-[#9CA3AF] block text-[10px]">Mistakes On Real Users:</span>
-                      <strong className="text-[#10B981] text-sm">
-                        {activeRun.scorecard?.false_positive_rate !== null && activeRun.scorecard?.false_positive_rate !== undefined
-                          ? `${(activeRun.scorecard.false_positive_rate * 100).toFixed(1)}% (Almost 0)`
-                          : "0.0%"}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
+                <SimulatorScorecard
+                  activeRun={activeRun}
+                  recentTicks={recentTicks}
+                  liveBlockedPct={liveBlockedPct}
+                  aiTimeToDetectSeconds={aiTimeToDetectSeconds}
+                  aiTimeToMitigateSeconds={aiTimeToMitigateSeconds}
+                  totalOfferedLegit={totalOfferedLegit}
+                  totalDroppedLegit={totalDroppedLegit}
+                />
               )}
             </div>
           ) : (
-            <div className="bg-[rgba(31,41,55,0.6)] backdrop-blur-xl border border-[rgba(75,85,99,0.3)] rounded-xl p-12 text-center text-[#9CA3AF] font-mono text-sm space-y-2">
+            <div className="bg-[#111827]/70 backdrop-blur-xl border border-gray-700/60 rounded-xl p-12 text-center text-gray-400 font-mono text-sm space-y-2">
               <Info className="w-8 h-8 text-[#00FF9D] mx-auto opacity-70" />
               <div>No active simulation session loaded.</div>
-              <p className="text-xs text-[#9CA3AF]/60 font-sans">
+              <p className="text-xs text-gray-400 font-sans">
                 Choose an attack scenario on the left and click &quot;Initialize Simulation Run&quot; to begin.
               </p>
             </div>
           )}
 
           {/* Past Simulation Runs Table */}
-          <div className="bg-[rgba(31,41,55,0.6)] backdrop-blur-xl border border-[rgba(75,85,99,0.3)] rounded-xl p-5 shadow-xl space-y-3 font-mono">
-            <div className="flex items-center justify-between border-b border-[rgba(75,85,99,0.3)] pb-2">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-200 flex items-center gap-2">
-                <RotateCcw className="w-3.5 h-3.5 text-[#00FF9D]" />
-                Previous Chaos Replay Sessions
-              </h3>
-              <button
-                onClick={refreshPastRuns}
-                className="text-[11px] font-mono text-[#00FF9D] hover:underline cursor-pointer"
-              >
-                Refresh List
-              </button>
-            </div>
-
-            {pastRuns.length === 0 ? (
-              <span className="text-xs text-[#9CA3AF] font-mono">No simulation runs recorded yet.</span>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-[rgba(75,85,99,0.3)] bg-[#090D16]">
-                <table className="w-full text-left text-xs font-mono">
-                  <thead>
-                    <tr className="text-[#9CA3AF] border-b border-[rgba(75,85,99,0.3)] bg-[#1F2937]/50 text-[11px] uppercase">
-                      <th className="py-2.5 px-3">Run ID</th>
-                      <th className="py-2.5 px-3">Scenario</th>
-                      <th className="py-2.5 px-3">Status</th>
-                      <th className="py-2.5 px-3">Progress</th>
-                      <th className="py-2.5 px-3 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[rgba(75,85,99,0.2)]">
-                    {pastRuns.map((r) => (
-                      <tr
-                        key={r.run_id}
-                        className={`hover:bg-[#1F2937]/40 transition-colors ${
-                          activeRun?.run_id === r.run_id ? "bg-[rgba(0,255,157,0.08)]" : ""
-                        }`}
-                      >
-                        <td className="py-2.5 px-3 text-[#00FF9D] font-bold">{r.run_id}</td>
-                        <td className="py-2.5 px-3 text-gray-200">{r.scenario_type}</td>
-                        <td className="py-2.5 px-3">
-                          <Badge
-                            variant={
-                              r.status === "completed"
-                                ? "normal"
-                                : r.status === "running"
-                                ? "critical"
-                                : r.status === "paused"
-                                ? "warning"
-                                : "outline"
-                            }
-                            className="text-[10px]"
-                          >
-                            {r.status}
-                          </Badge>
-                        </td>
-                        <td className="py-2.5 px-3 text-[#9CA3AF]">
-                          {r.current_tick} / {r.total_ticks}s
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          <button
-                            onClick={() => loadRunDetail(r.run_id)}
-                            className="text-[#00FF9D] hover:underline font-semibold cursor-pointer"
-                          >
-                            Load Session
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <SimulatorHistoryTable
+            pastRuns={pastRuns}
+            activeRunId={activeRun?.run_id}
+            onRefresh={refreshPastRuns}
+            onLoadRun={loadRunDetail}
+          />
         </div>
       </div>
     </div>

@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useState } from "react";
-
 import { AlertDetailsModal } from "@/components/alerts/AlertDetailsModal";
 import { AlertsTable } from "@/components/alerts/AlertsTable";
 import { MetricCard } from "@/components/common/MetricCard";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import {
   Card,
@@ -14,9 +12,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/Card";
-import { AlertTriangle, Bell, RefreshCw, Shield } from "@/components/ui/icons";
+import { Bell, RefreshCw } from "@/components/ui/icons";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { api, type AlertItem } from "@/lib/api";
+import { formatISTTime } from "@/lib/formatters";
 import { usePolling } from "@/lib/polling";
 
 export default function AlertsPage() {
@@ -32,7 +31,7 @@ export default function AlertsPage() {
     });
   }, [severityFilter, searchIp]);
 
-  const { data, loading, error, isStale, isDisconnected, lastUpdated, refresh } =
+  const { data, loading, isStale, isDisconnected, lastUpdated, refresh } =
     usePolling(fetchAlerts, 3000);
 
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
@@ -56,29 +55,33 @@ export default function AlertsPage() {
 
   const alerts = data?.alerts || [];
   const criticalCount = alerts.filter((a) => a.severity.toLowerCase() === "critical").length;
-  const highCount = alerts.filter((a) => a.severity.toLowerCase() === "high" || a.severity.toLowerCase() === "warning").length;
+  const highCount = alerts.filter(
+    (a) => a.severity.toLowerCase() === "high" || a.severity.toLowerCase() === "warning"
+  ).length;
   const mediumCount = alerts.filter((a) => a.severity.toLowerCase() === "medium").length;
-  const lowCount = alerts.filter((a) => a.severity.toLowerCase() === "low" || a.severity.toLowerCase() === "info").length;
+  const lowCount = alerts.filter(
+    (a) => a.severity.toLowerCase() === "low" || a.severity.toLowerCase() === "info"
+  ).length;
 
   return (
     <div className="space-y-6">
       {/* Header & Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[rgba(75,85,99,0.3)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-gray-800">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3 font-mono">
             <Bell className="w-6 h-6 text-[#00FF9D]" />
             Threat Incidents
           </h1>
-          <p className="text-xs text-[#9CA3AF] mt-1 font-sans">
+          <p className="text-xs text-gray-400 mt-1 font-sans">
             Real-time data packet inspection and AI Random Forest threat classification.
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <StatusIndicator status={statusType} />
           {lastUpdated && (
-            <span className="text-xs text-[#9CA3AF] font-mono">
-              Updated: {lastUpdated.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })} IST
+            <span className="text-xs text-gray-400 font-mono">
+              Updated: {formatISTTime(lastUpdated)} IST
             </span>
           )}
           <Button
@@ -98,112 +101,68 @@ export default function AlertsPage() {
         <MetricCard
           title="Total Threat Events"
           value={data?.total_count ?? alerts.length}
-          subtitle="All detected anomalous flows"
+          subtitle="All recorded incident payloads"
           icon={<Bell className="w-4 h-4 text-[#00FF9D]" />}
         />
         <MetricCard
-          title="Critical Threats"
+          title="Critical Severity"
           value={criticalCount}
-          subtitle="Immediate mitigation recommended"
-          icon={<AlertTriangle className="w-4 h-4 text-rose-500" />}
-          badge={<Badge variant="critical">{criticalCount > 0 ? "URGENT" : "CLEAR"}</Badge>}
+          subtitle="Immediate mitigation required"
+          icon={<span className="text-rose-400 font-bold">CRIT</span>}
+          className="border-rose-500/30"
         />
         <MetricCard
-          title="High & Warning"
+          title="High / Warning"
           value={highCount}
-          subtitle="Heavy anomalous packet volume"
-          icon={<AlertTriangle className="w-4 h-4 text-amber-400" />}
-          badge={<Badge variant="warning">{highCount > 0 ? "ELEVATED" : "NORMAL"}</Badge>}
+          subtitle="Elevated packet flood risk"
+          icon={<span className="text-amber-400 font-bold">WARN</span>}
+          className="border-amber-500/30"
         />
         <MetricCard
-          title="Medium & Low"
+          title="Medium / Low"
           value={mediumCount + lowCount}
-          subtitle={`Medium: ${mediumCount} · Low: ${lowCount}`}
-          icon={<Shield className="w-4 h-4 text-[#06B6D4]" />}
-          badge={<Badge variant="matrix">MONITORED</Badge>}
+          subtitle="Anomalies under surveillance"
+          icon={<span className="text-[#06B6D4] font-bold">INFO</span>}
         />
       </div>
 
       {/* Filter Toolbar */}
       <Card>
-        <CardContent className="px-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xs text-[#9CA3AF] font-mono">Filter by Severity:</span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {[
-                { id: "all", label: "All", count: data?.total || alerts.length, color: "text-gray-200" },
-                { id: "critical", label: "Critical", count: criticalCount, color: "text-rose-400" },
-                { id: "high", label: "High", count: highCount, color: "text-amber-400" },
-                { id: "medium", label: "Medium", count: mediumCount, color: "text-cyan-400" },
-                { id: "low", label: "Low", count: lowCount, color: "text-emerald-400" },
-              ].map((tab) => {
-                const isActive = severityFilter === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setSeverityFilter(tab.id)}
-                    className={`px-3 py-1 rounded-md text-xs font-mono transition-all flex items-center gap-1.5 border ${
-                      isActive
-                        ? "bg-[#1F2937] border-[#00FF9D] text-[#00FF9D] shadow-xs"
-                        : "bg-[#090D16] border-[rgba(75,85,99,0.4)] text-gray-400 hover:text-gray-200 hover:border-gray-500"
-                    }`}
-                  >
-                    <span>{tab.label}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full bg-black/40 ${tab.color}`}>
-                      {tab.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-[#9CA3AF] font-mono">Target IP:</label>
-            <input
-              suppressHydrationWarning
-              autoComplete="off"
-              type="text"
-              placeholder="e.g. 192.168.1.150"
-              value={searchIp}
-              onChange={(e) => setSearchIp(e.target.value)}
-              className="bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono placeholder:text-gray-600 focus:border-[#00FF9D] focus:outline-none"
-            />
-            {(severityFilter !== "all" || searchIp.trim()) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSeverityFilter("all");
-                  setSearchIp("");
-                }}
-              >
-                Reset
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Alerts Table */}
-      <Card>
-        <CardHeader>
+        <CardHeader className="flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <CardTitle className="font-mono">
-              High-Density Security Incident Feed (              {data?.total_count ?? alerts.length})
-            </CardTitle>
-            <CardDescription>
-              Select any incident row to open the interactive mitigation drawer and evaluate safety gate guardrails
-            </CardDescription>
+            <CardTitle className="font-mono text-sm">Threat Incident Query Filters</CardTitle>
+            <CardDescription>Filter incoming security incidents by severity or destination IP</CardDescription>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+            <div className="w-full sm:w-auto">
+              <label htmlFor="search-target-ip" className="sr-only">Search Target IP</label>
+              <input
+                id="search-target-ip"
+                type="text"
+                placeholder="Filter by target IP..."
+                value={searchIp}
+                onChange={(e) => setSearchIp(e.target.value)}
+                className="w-full sm:w-48 bg-[#090D16] border border-gray-700/60 rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono placeholder:text-gray-500 focus:outline-none focus:border-[#00FF9D]"
+              />
+            </div>
+            <div className="w-full sm:w-auto">
+              <label htmlFor="select-severity" className="sr-only">Filter Severity</label>
+              <select
+                id="select-severity"
+                value={severityFilter}
+                onChange={(e) => setSeverityFilter(e.target.value)}
+                className="w-full sm:w-36 bg-[#090D16] border border-gray-700/60 rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:outline-none focus:border-[#00FF9D]"
+              >
+                <option value="all">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {error && (
-            <div className="p-4 mb-4 rounded-xl border border-red-500/40 bg-[rgba(239,68,68,0.15)] text-[#EF4444] text-xs font-mono">
-              Error fetching telemetry alerts: {error.message}
-            </div>
-          )}
-
           <AlertsTable
             alerts={alerts}
             onSelectAlert={(alert) => setSelectedAlert(alert)}
@@ -211,7 +170,7 @@ export default function AlertsPage() {
         </CardContent>
       </Card>
 
-      {/* Interactive Mitigation Drawer */}
+      {/* Investigation Modal */}
       <AlertDetailsModal
         alert={selectedAlert}
         onClose={() => setSelectedAlert(null)}

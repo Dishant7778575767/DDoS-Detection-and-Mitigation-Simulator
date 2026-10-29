@@ -5,6 +5,7 @@ export * from "./mitigation";
 export * from "./config";
 export * from "./audit";
 export * from "./simulation";
+export * from "./telemetry";
 
 export interface HealthResponse {
   status: string;

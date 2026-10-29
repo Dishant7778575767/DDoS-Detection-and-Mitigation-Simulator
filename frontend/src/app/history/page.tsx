@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useCallback, useState } from "react";
-
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import {
@@ -19,7 +18,9 @@ import {
   RefreshCw,
 } from "@/components/ui/icons";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
-import { api, getApiAuthToken, type AuditEventItem } from "@/lib/api";
+import { api, type AuditEventItem } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
+import { formatISTDateTime, formatISTTime } from "@/lib/formatters";
 import { usePolling } from "@/lib/polling";
 
 export default function HistoryPage() {
@@ -43,42 +44,20 @@ export default function HistoryPage() {
     setRefreshMessage(null);
     try {
       await refresh();
-      const timeStr = new Date().toLocaleTimeString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        hour12: false,
-      });
-      setRefreshMessage(`Audit trail synchronized successfully at ${timeStr} IST`);
+      setRefreshMessage(`Audit trail synchronized successfully at ${formatISTTime(new Date())} IST`);
       setTimeout(() => setRefreshMessage(null), 3000);
     } catch (err: unknown) {
-      const msg = err && typeof err === "object" && "message" in err ? String(err.message) : "Failed to refresh audit log";
-      setRefreshMessage(`Sync failed: ${msg}`);
+      setRefreshMessage(`Sync failed: ${getErrorMessage(err, "Failed to refresh audit log")}`);
     } finally {
       setIsRefreshing(false);
     }
   };
 
   const handleDownloadCsv = async () => {
-    const token = getApiAuthToken();
-    const url = api.getAuditCsvUrl();
     try {
-      const res = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) throw new Error("Failed to export CSV");
-      const blob = await res.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = downloadUrl;
-      a.download = `sentrix_audit_${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      await api.downloadAuditCsv();
     } catch (err: unknown) {
-      const msg = err && typeof err === "object" && "message" in err ? String(err.message) : "Failed to download audit CSV";
-      alert(`Export error: ${msg}`);
+      alert(`Export error: ${getErrorMessage(err, "Failed to download audit CSV")}`);
     }
   };
 
@@ -93,22 +72,22 @@ export default function HistoryPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[rgba(75,85,99,0.3)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-gray-800">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3 font-mono">
             <HistoryIcon className="w-6 h-6 text-[#00FF9D]" />
             Security Audit Trail
           </h1>
-          <p className="text-xs text-[#9CA3AF] mt-1 font-sans">
+          <p className="text-xs text-gray-400 mt-1 font-sans">
             A secure, tamper-proof timeline of network events, threat detections, simulations, and actions taken.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <StatusIndicator status={statusType} />
           {lastUpdated && (
-            <span className="text-xs text-[#9CA3AF] font-mono">
-              Updated: {lastUpdated.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })} IST
+            <span className="text-xs text-gray-400 font-mono">
+              Updated: {formatISTTime(lastUpdated)} IST
             </span>
           )}
           <Button
@@ -116,7 +95,6 @@ export default function HistoryPage() {
             size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="border-[rgba(75,85,99,0.4)] hover:border-[#00FF9D] hover:text-[#00FF9D] transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-[#00FF9D]" : ""}`} />
             {isRefreshing ? "Refreshing..." : "Refresh"}
@@ -138,13 +116,16 @@ export default function HistoryPage() {
 
       {/* Filter Bar */}
       <Card>
-        <CardContent className="px-4 flex flex-wrap items-center justify-between gap-4">
+        <CardContent className="px-4 py-2 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <label className="text-xs text-[#9CA3AF] font-mono">Event Type Filter:</label>
+            <label htmlFor="audit-filter-type" className="text-xs text-gray-400 font-mono">
+              Event Type Filter:
+            </label>
             <select
+              id="audit-filter-type"
               value={eventTypeFilter}
               onChange={(e) => setEventTypeFilter(e.target.value)}
-              className="bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
+              className="bg-[#090D16] border border-gray-700/60 rounded-lg px-3 py-1.5 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
             >
               <option value="all">All Events</option>
               <option value="simulation_created">simulation_created (Simulation Created)</option>
@@ -174,41 +155,39 @@ export default function HistoryPage() {
           <div>
             <CardTitle className="font-mono">Audit Records ({data?.total_count ?? data?.total ?? 0})</CardTitle>
             <CardDescription>
-              High-density immutable security ledger. Click Details on any entry to inspect raw telemetry payload.
+              High-density immutable security ledger. Click Inspect on any entry to view raw telemetry payload.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
           {error && (
-            <div className="p-4 mb-4 rounded-xl border border-red-500/40 bg-[rgba(239,68,68,0.15)] text-[#EF4444] text-xs font-mono">
+            <div className="p-4 mb-4 rounded-xl border border-red-500/40 bg-red-500/10 text-[#EF4444] text-xs font-mono">
               Error fetching audit records: {error.message}
             </div>
           )}
 
-          <div className="overflow-x-auto rounded-xl border border-[rgba(75,85,99,0.3)] bg-[#090D16]/80 font-mono text-xs">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto rounded-xl border border-gray-700/60 bg-[#090D16]/80 font-mono text-xs">
+            <table className="w-full text-left border-collapse" aria-label="Audit Records Table">
               <thead>
-                <tr className="border-b border-[rgba(75,85,99,0.3)] bg-[#1F2937]/50 text-[#9CA3AF] text-[11px] uppercase tracking-wider">
-                  <th className="py-3 px-3">Timestamp (UTC)</th>
-                  <th className="py-3 px-3">Event ID</th>
-                  <th className="py-3 px-3">Event Type</th>
-                  <th className="py-3 px-3">Actor / Subsystem</th>
-                  <th className="py-3 px-3">Action</th>
-                  <th className="py-3 px-3 text-right">Details</th>
+                <tr className="border-b border-gray-800 bg-[#1F2937]/50 text-gray-400 text-[11px] uppercase tracking-wider">
+                  <th scope="col" className="py-3 px-3">Timestamp (IST)</th>
+                  <th scope="col" className="py-3 px-3">Event ID</th>
+                  <th scope="col" className="py-3 px-3">Event Type</th>
+                  <th scope="col" className="py-3 px-3">Actor / Subsystem</th>
+                  <th scope="col" className="py-3 px-3">Action</th>
+                  <th scope="col" className="py-3 px-3 text-right">Details</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[rgba(75,85,99,0.2)]">
+              <tbody className="divide-y divide-gray-800/80">
                 {data?.events && data.events.length > 0 ? (
                   data.events.map((event: AuditEventItem) => {
                     const isExpanded = expandedEventId === event.event_id;
-                    const formattedTime = event.timestamp
-                      ? new Date(event.timestamp).toISOString().replace("T", " ").slice(0, 19)
-                      : "—";
+                    const formattedTime = formatISTDateTime(event.timestamp);
 
                     return (
                       <Fragment key={event.event_id}>
                         <tr className="hover:bg-[#1F2937]/40 transition-colors">
-                          <td className="py-3 px-3 text-[#9CA3AF] whitespace-nowrap">
+                          <td className="py-3 px-3 text-gray-400 whitespace-nowrap">
                             {formattedTime}
                           </td>
                           <td className="py-3 px-3 text-[#00FF9D] font-bold">
@@ -233,7 +212,7 @@ export default function HistoryPage() {
                           <td className="py-3 px-3 text-gray-200 font-semibold">
                             {event.actor || "system"}
                           </td>
-                          <td className="py-3 px-3 text-[#9CA3AF]">
+                          <td className="py-3 px-3 text-gray-400">
                             {event.action}
                           </td>
                           <td className="py-3 px-3 text-right">
@@ -242,6 +221,7 @@ export default function HistoryPage() {
                               size="sm"
                               onClick={() => setExpandedEventId(isExpanded ? null : event.event_id)}
                               className="text-xs"
+                              aria-expanded={isExpanded}
                             >
                               <Code className="w-3.5 h-3.5 text-[#00FF9D]" />
                               {isExpanded ? "Collapse" : "Inspect"}
@@ -251,13 +231,13 @@ export default function HistoryPage() {
 
                         {isExpanded && (
                           <tr className="bg-[#090D16]">
-                            <td colSpan={6} className="p-4 border-b border-[rgba(75,85,99,0.3)]">
-                              <div className="space-y-2 rounded-lg bg-[#1F2937]/40 border border-[rgba(75,85,99,0.4)] p-3">
+                            <td colSpan={6} className="p-4 border-b border-gray-800">
+                              <div className="space-y-2 rounded-lg bg-[#1F2937]/40 border border-gray-700/60 p-3">
                                 <div className="text-[11px] font-bold text-[#00FF9D] flex items-center justify-between">
                                   <span>Raw Event Telemetry Payload</span>
-                                  <span className="text-[#9CA3AF] font-normal">SHA256 Signed</span>
+                                  <span className="text-gray-400 font-normal">SHA256 Signed</span>
                                 </div>
-                                <pre className="text-[11px] text-[#9CA3AF] overflow-x-auto max-h-60 p-2 rounded bg-[#090D16] border border-[rgba(75,85,99,0.3)]">
+                                <pre className="text-[11px] text-gray-300 overflow-x-auto max-h-60 p-2 rounded bg-[#090D16] border border-gray-700/60">
                                   {JSON.stringify(event.details, null, 2)}
                                 </pre>
                               </div>
@@ -269,7 +249,7 @@ export default function HistoryPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-[#9CA3AF]">
+                    <td colSpan={6} className="py-8 text-center text-gray-400 font-mono">
                       No audit events recorded for this criteria.
                     </td>
                   </tr>

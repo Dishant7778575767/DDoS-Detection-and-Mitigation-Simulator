@@ -37,6 +37,7 @@ target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 filterwarnings = [
     "ignore::ResourceWarning",
     "ignore::sklearn.exceptions.InconsistentVersionWarning",

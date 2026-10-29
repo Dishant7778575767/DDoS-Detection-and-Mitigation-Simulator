@@ -1,0 +1,63 @@
+version: "3.8"
+
+services:
+  # ============================================================================
+  # SENTRIX Autonomous Defense Backend (FastAPI + ML Classifier + Telemetry Pipeline)
+  # ============================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: sentrix-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=sqlite:///./data/sentrix.db
+      - API_AUTH_REQUIRED=${API_AUTH_REQUIRED:-true}
+      - API_AUTH_TOKEN=${API_AUTH_TOKEN:-sentrix-autonomous-defense-key-2026}
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - sentrix_data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health -H \"Authorization: Bearer $${API_AUTH_TOKEN:-sentrix-autonomous-defense-key-2026}\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - sentrix-network
+
+  # ============================================================================
+  # SENTRIX SOC Web Interface (Next.js 16 Standalone Dashboard)
+  # ============================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: sentrix-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_USE_PROXY=true
+      - BACKEND_URL=http://backend:8000
+      - API_AUTH_TOKEN=${API_AUTH_TOKEN:-sentrix-autonomous-defense-key-2026}
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sentrix-network
+
+volumes:
+  sentrix_data:
+    name: sentrix_persistent_data
+
+networks:
+  sentrix-network:
+    name: sentrix-net
+    driver: bridge
+

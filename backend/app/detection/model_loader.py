@@ -21,13 +21,34 @@ class ModelNotFoundError(FileNotFoundError):
 
 
 def _resolve_model_path(path: Path) -> Path:
-    """Resolve a model path considering both repo root and backend/ working directory."""
+    """Resolve a model path anchored to repo root, backend root, or working directory."""
+    # 1. Absolute path check
+    if path.is_absolute() and path.exists():
+        return path.resolve()
+
+    # 2. Check relative to current working directory
     if path.exists():
-        return path
-    parent_path = Path("..") / path
-    if parent_path.exists():
-        return parent_path
-    return path
+        return path.resolve()
+
+    # 3. Anchor against the source code location of this module
+    # backend/app/detection/model_loader.py: parents[3] is repo root, parents[2] is backend root
+    current_file = Path(__file__).resolve()
+    repo_root = current_file.parents[3]
+    backend_root = current_file.parents[2]
+
+    candidates: list[Path] = [
+        repo_root / path,
+        backend_root / path,
+        Path.cwd() / path,
+        Path.cwd().parent / path,
+    ]
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+
+    # Default fallback to repo_root / path for deterministic resolution
+    return (repo_root / path).resolve()
 
 
 @lru_cache(maxsize=2)

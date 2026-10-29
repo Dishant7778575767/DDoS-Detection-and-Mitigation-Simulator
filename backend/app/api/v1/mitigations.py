@@ -584,3 +584,186 @@ def emergency_disable_mitigations(
         "cancelled_actions_count": cancelled_count,
         "status": "All mitigation actions have been halted.",
     }
+
+
+# ---------------------------------------------------------------------------
+# Real-World Defensive Mitigation & Staged Dry-Run Endpoints (Milestone 3)
+# ---------------------------------------------------------------------------
+
+from fastapi.responses import PlainTextResponse
+
+from app.mitigation.config_exporter import export_caddy_config, export_nginx_config
+from app.mitigation.defensive_engine import (
+    DefensiveActionType,
+    DefensiveMitigationRule,
+    defensive_engine,
+)
+
+
+class ProposeDefensiveRuleRequest(BaseModel):
+    target_ip_or_cidr: str = Field(
+        ..., description="Target IPv4, IPv6, or CIDR network"
+    )
+    action_type: DefensiveActionType = Field(default=DefensiveActionType.RATE_LIMIT)
+    rate_limit_rps: int = Field(default=10, ge=1, le=50000)
+    burst_capacity: int = Field(default=20, ge=1, le=50000)
+    ttl_seconds: int = Field(default=600, ge=30, le=86400)
+    reason: str = Field(default="Suspicious traffic pattern detected")
+    dry_run: bool = Field(default=True, description="Staged Dry-Run mode by default")
+
+
+@router.post(
+    "/mitigations/defensive/propose",
+    response_model=DefensiveMitigationRule,
+    status_code=status.HTTP_201_CREATED,
+    summary="Propose a new defensive mitigation policy (Defaults to safe Dry-Run mode)",
+)
+def propose_defensive_rule(
+    payload: ProposeDefensiveRuleRequest,
+    session: Annotated[Session, Depends(get_db_session)],
+) -> DefensiveMitigationRule:
+    """Create a defensive mitigation rule.
+
+    Rejects protected infrastructure allowlist IPs. Mitigations start in Dry-Run
+    mode to evaluate impact before live enforcement.
+    """
+    try:
+        rule = defensive_engine.propose_rule(
+            target_ip_or_cidr=payload.target_ip_or_cidr,
+            action_type=payload.action_type,
+            rate_limit_rps=payload.rate_limit_rps,
+            burst_capacity=payload.burst_capacity,
+            ttl_seconds=payload.ttl_seconds,
+            reason=payload.reason,
+            dry_run=payload.dry_run,
+        )
+        record_audit_event(
+            session=session,
+            event_type="defensive_rule_proposed",
+            action="propose_rule",
+            actor="operator_api",
+            details={
+                "rule_id": rule.rule_id,
+                "target": rule.target_ip_or_cidr,
+                "action": rule.action_type.value,
+                "mode": rule.mode.value,
+                "ttl_seconds": rule.ttl_seconds,
+                "reason": rule.reason,
+            },
+        )
+        return rule
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get(
+    "/mitigations/defensive/rules",
+    response_model=list[DefensiveMitigationRule],
+    summary="List all active and dry-run defensive mitigation rules",
+)
+def get_defensive_rules(
+    include_expired: Annotated[
+        bool, Query(description="Include expired rules in response")
+    ] = False,
+) -> list[DefensiveMitigationRule]:
+    """Return all active defensive mitigation rules with remaining TTL countdowns."""
+    return defensive_engine.get_rules(include_expired=include_expired)
+
+
+@router.post(
+    "/mitigations/defensive/{rule_id}/approve",
+    response_model=DefensiveMitigationRule,
+    summary="Operator approval to promote a dry-run rule to active enforcement",
+)
+def approve_defensive_rule(
+    rule_id: Annotated[str, Path(description="Defensive rule ID to approve")],
+    session: Annotated[Session, Depends(get_db_session)],
+) -> DefensiveMitigationRule:
+    """Operator human-in-the-loop approval step to promote a rule from Dry-Run to Active."""
+    try:
+        rule = defensive_engine.approve_rule(rule_id=rule_id, operator="admin_operator")
+        record_audit_event(
+            session=session,
+            event_type="defensive_rule_approved",
+            action="approve_rule",
+            actor="admin_operator",
+            details={
+                "rule_id": rule.rule_id,
+                "target": rule.target_ip_or_cidr,
+                "mode": "ACTIVE",
+                "action": rule.action_type.value,
+            },
+        )
+        return rule
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+
+@router.post(
+    "/mitigations/defensive/{rule_id}/revoke",
+    summary="Immediately cancel or revoke an active or dry-run defense rule",
+)
+def revoke_defensive_rule(
+    rule_id: Annotated[str, Path(description="Defensive rule ID to revoke")],
+    session: Annotated[Session, Depends(get_db_session)],
+) -> dict[str, str]:
+    """Revoke and cancel a defensive rule."""
+    revoked = defensive_engine.revoke_rule(rule_id=rule_id)
+    if not revoked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Rule '{rule_id}' not found.",
+        )
+    record_audit_event(
+        session=session,
+        event_type="defensive_rule_revoked",
+        action="revoke_rule",
+        actor="operator_api",
+        details={"rule_id": rule_id},
+    )
+    return {"status": "revoked", "rule_id": rule_id}
+
+
+@router.get(
+    "/mitigations/export/nginx",
+    response_class=PlainTextResponse,
+    summary="Export active defensive policies as production-grade Nginx configuration",
+)
+def export_nginx_mitigations() -> PlainTextResponse:
+    """Generate and download ready-to-mount Nginx blocklist and rate-limit configuration snippet."""
+    rules = defensive_engine.get_rules(include_expired=False)
+    content = export_nginx_config(rules)
+    return PlainTextResponse(
+        content=content,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": "attachment; filename=sentrix_nginx_defense.conf"
+        },
+    )
+
+
+@router.get(
+    "/mitigations/export/caddy",
+    response_class=PlainTextResponse,
+    summary="Export active defensive policies as Caddyfile configuration",
+)
+def export_caddy_mitigations() -> PlainTextResponse:
+    """Generate and download Caddy route matcher snippet."""
+    rules = defensive_engine.get_rules(include_expired=False)
+    content = export_caddy_config(rules)
+    return PlainTextResponse(
+        content=content,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": "attachment; filename=Caddyfile_sentrix.snippet"
+        },
+    )

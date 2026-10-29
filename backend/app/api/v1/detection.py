@@ -1,22 +1,30 @@
-"""Detection analysis endpoint."""
+"""Detection analysis and threat evaluation endpoints for SENTRIX."""
 
 from __future__ import annotations
 
 import time
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.security import require_api_auth
+from app.detection.baselines import telemetry_baseline
 from app.detection.predictor import run_flow_inference
+from app.detection.threat_classifier import (
+    ThreatClassificationResult,
+    classify_telemetry_snapshot,
+)
 from app.features.definitions import FEATURE_SCHEMA_VERSION
+from app.features.telemetry_aggregator import telemetry_aggregator
+from app.ingestion.telemetry_schemas import LiveTelemetrySummaryResponse
 from app.ingestion.validators import validate_flow_features
 from app.policy.engine import evaluate_hybrid_policy
+from app.storage.audit import record_audit_event
 from app.storage.database import get_db_session
-from app.storage.repositories import ThresholdConfigRepository
+from app.storage.repositories import AlertRepository, ThresholdConfigRepository
 
 router = APIRouter(tags=["detection"], dependencies=[Depends(require_api_auth)])
 
@@ -70,3 +78,103 @@ def analyze_flow_features(
         mitigation_mode="simulation",
         timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     )
+
+
+@router.get(
+    "/detection/live",
+    response_model=ThreatClassificationResult,
+    summary="Evaluate active HTTP telemetry sliding window for DDoS signatures",
+)
+def evaluate_live_detection(
+    session: Annotated[Session, Depends(get_db_session)],
+    window_seconds: Annotated[
+        float,
+        Query(
+            description="Sliding window duration to analyze in seconds",
+            ge=1.0,
+            le=300.0,
+        ),
+    ] = 10.0,
+    persist_alert: Annotated[
+        bool,
+        Query(description="Persist active alerts to database when threat is confirmed"),
+    ] = True,
+) -> ThreatClassificationResult:
+    """Run multi-tier threat classification over live aggregated web telemetry."""
+    summary = telemetry_aggregator.get_summary(window_duration=window_seconds)
+    result = classify_telemetry_snapshot(summary, baseline=telemetry_baseline)
+
+    if persist_alert and result.is_threat:
+        alert_repo = AlertRepository(session)
+        recent_alerts = alert_repo.list_filtered(status="active", limit=10)
+        already_alerted = any(
+            a.source_id == "live_telemetry" and result.threat_type.value in a.title
+            for a in recent_alerts
+        )
+        if not already_alerted:
+            severity_str = (
+                "critical"
+                if result.severity.value in ("HIGH", "CRITICAL")
+                else "warning"
+            )
+            alert = alert_repo.create(
+                detection_id=None,
+                severity=severity_str,
+                title=f"Live Threat: {result.threat_type.value}",
+                description="; ".join(result.reasons[:3]),
+                source_id="live_telemetry",
+                timestamp=result.timestamp,
+            )
+            record_audit_event(
+                session=session,
+                event_type="live_threat_detected",
+                action="threat_classified",
+                actor="sentrix_detection_engine",
+                details={
+                    "alert_id": alert.alert_id,
+                    "threat_type": result.threat_type.value,
+                    "severity": result.severity.value,
+                    "confidence": result.confidence,
+                    "target_candidates": result.candidate_target_ips,
+                    "z_scores": result.z_scores,
+                    "reasons": result.reasons,
+                },
+            )
+
+    return result
+
+
+@router.post(
+    "/detection/evaluate-telemetry",
+    response_model=ThreatClassificationResult,
+    summary="Evaluate custom telemetry snapshot against baseline and signatures",
+)
+def evaluate_telemetry_snapshot(
+    payload: LiveTelemetrySummaryResponse,
+) -> ThreatClassificationResult:
+    """Evaluate an explicit telemetry summary snapshot without auto-updating baseline."""
+    return classify_telemetry_snapshot(
+        payload, baseline=telemetry_baseline, update_baseline_if_normal=False
+    )
+
+
+@router.get(
+    "/detection/baseline",
+    summary="Retrieve current adaptive EWMA baseline statistics",
+)
+def get_adaptive_baseline() -> dict[str, Any]:
+    """Return the current moving mean and variance for traffic baselines."""
+    return telemetry_baseline.get_summary()
+
+
+@router.post(
+    "/detection/baseline/reset",
+    summary="Reset and re-calibrate adaptive telemetry baselines",
+)
+def reset_adaptive_baseline() -> dict[str, str]:
+    """Re-seed baseline with default healthy web parameters."""
+    telemetry_baseline.calibrate()
+    return {
+        "status": "reset",
+        "message": "Adaptive EWMA baselines re-calibrated successfully.",
+    }

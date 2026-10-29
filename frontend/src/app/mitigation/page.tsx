@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import {
@@ -23,7 +22,10 @@ import {
 import { Modal } from "@/components/ui/Modal";
 import { StatusIndicator } from "@/components/ui/StatusIndicator";
 import { api, type MitigationItem } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
+import { formatISTTime } from "@/lib/formatters";
 import { usePolling } from "@/lib/polling";
+import { DefensiveRulesCard } from "@/components/mitigation/DefensiveRulesCard";
 
 interface MitigationStatusData {
   emergency_disabled: boolean;
@@ -49,31 +51,40 @@ interface MitigationStatusData {
   cooldown_ticks?: number;
 }
 
+interface PolledMitigationData {
+  mitigations: MitigationItem[];
+  status: MitigationStatusData | null;
+}
+
 export default function MitigationPage() {
   const [isDisableModalOpen, setIsDisableModalOpen] = useState<boolean>(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [isEmergencyActive, setIsEmergencyActive] = useState<boolean>(false);
-  const [mitigationStatus, setMitigationStatus] = useState<MitigationStatusData | null>(null);
+  const [localStatusOverride, setLocalStatusOverride] = useState<MitigationStatusData | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
-  const fetchMitigations = useCallback(async () => {
-    try {
-      const statusRes = await api.getMitigationStatus();
-      setMitigationStatus(statusRes);
-      setIsEmergencyActive(statusRes.emergency_disabled);
-    } catch {
-      // Ignore fallback if status endpoint unavailable
-    }
-    return api.getMitigations({ limit: 50 });
+  const fetchMitigations = useCallback(async (): Promise<PolledMitigationData> => {
+    const [statusRes, mitRes] = await Promise.allSettled([
+      api.getMitigationStatus(),
+      api.getMitigations({ limit: 50 }),
+    ]);
+
+    return {
+      status: statusRes.status === "fulfilled" ? statusRes.value : null,
+      mitigations: mitRes.status === "fulfilled" ? (mitRes.value.mitigations || []) : [],
+    };
   }, []);
 
   const { data, loading, error, isStale, isDisconnected, lastUpdated, refresh } =
-    usePolling(fetchMitigations, 3000);
+    usePolling<PolledMitigationData>(fetchMitigations, 3000);
+
+  const mitigationStatus = localStatusOverride ?? data?.status ?? null;
+  const isEmergencyActive = Boolean(mitigationStatus?.emergency_disabled);
 
   useEffect(() => {
     const handleShieldUpdate = () => {
+      setLocalStatusOverride(null);
       void refresh();
     };
     window.addEventListener("sentrix:shield_update", handleShieldUpdate);
@@ -84,21 +95,12 @@ export default function MitigationPage() {
     setIsRefreshing(true);
     setActionMessage(null);
     try {
-      const [statusRes] = await Promise.all([
-        api.getMitigationStatus(),
-        refresh(),
-      ]);
-      setMitigationStatus(statusRes);
-      setIsEmergencyActive(statusRes.emergency_disabled);
-      const timeStr = new Date().toLocaleTimeString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        hour12: false,
-      });
-      setActionMessage(`Protection state & rules refreshed at ${timeStr} IST`);
+      setLocalStatusOverride(null);
+      await refresh();
+      setActionMessage(`Protection state & rules refreshed at ${formatISTTime(new Date())} IST`);
       setTimeout(() => setActionMessage(null), 3000);
     } catch (err: unknown) {
-      const msg = err && typeof err === "object" && "message" in err ? String(err.message) : "Failed to refresh";
-      setActionMessage(`Refresh failed: ${msg}`);
+      setActionMessage(`Refresh failed: ${getErrorMessage(err, "Failed to refresh")}`);
     } finally {
       setIsRefreshing(false);
     }
@@ -110,10 +112,9 @@ export default function MitigationPage() {
     try {
       await api.cancelMitigation(actionId);
       setActionMessage(`Action ${actionId.slice(0, 8)}... successfully cancelled.`);
-      refresh();
+      await refresh();
     } catch (err: unknown) {
-      const msg = err && typeof err === "object" && "message" in err ? String(err.message) : "Unknown error";
-      setActionMessage(`Failed to cancel: ${msg}`);
+      setActionMessage(`Failed to cancel: ${getErrorMessage(err, "Unknown error")}`);
     } finally {
       setCancellingId(null);
     }
@@ -123,17 +124,18 @@ export default function MitigationPage() {
     setActionMessage(null);
     try {
       const res = await api.emergencyDisable(false);
-      setIsEmergencyActive(true);
+      if (mitigationStatus) {
+        setLocalStatusOverride({ ...mitigationStatus, emergency_disabled: true });
+      }
       setActionMessage(
         res.emergency_disabled
           ? "EMERGENCY DISABLE ACTIVATED: All future mitigation requests blocked."
           : "Emergency disable toggled."
       );
       setIsDisableModalOpen(false);
-      refresh();
+      await refresh();
     } catch (err: unknown) {
-      const msg = err && typeof err === "object" && "message" in err ? String(err.message) : "Unknown error";
-      setActionMessage(`Emergency disable request failed: ${msg}`);
+      setActionMessage(`Emergency disable request failed: ${getErrorMessage(err, "Unknown error")}`);
     }
   };
 
@@ -141,12 +143,13 @@ export default function MitigationPage() {
     setActionMessage(null);
     try {
       await api.emergencyDisable(true);
-      setIsEmergencyActive(false);
+      if (mitigationStatus) {
+        setLocalStatusOverride({ ...mitigationStatus, emergency_disabled: false });
+      }
       setActionMessage("Safety Gate restored! Mitigation requests are now operational.");
-      refresh();
+      await refresh();
     } catch (err: unknown) {
-      const msg = err && typeof err === "object" && "message" in err ? String(err.message) : "Unknown error";
-      setActionMessage(`Failed to restore safety gate: ${msg}`);
+      setActionMessage(`Failed to restore safety gate: ${getErrorMessage(err, "Unknown error")}`);
     }
   };
 
@@ -159,9 +162,10 @@ export default function MitigationPage() {
         : "online";
 
   const allMitigations = data?.mitigations || [];
-  const filteredMitigations = statusFilter === "all"
-    ? allMitigations
-    : allMitigations.filter((m) => (m.status || m.state) === statusFilter);
+  const filteredMitigations =
+    statusFilter === "all"
+      ? allMitigations
+      : allMitigations.filter((m) => (m.status || m.state) === statusFilter);
 
   const activeCount = allMitigations.filter((m) => {
     const s = m.status || m.state;
@@ -171,22 +175,22 @@ export default function MitigationPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[rgba(75,85,99,0.3)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-gray-800">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3 font-mono">
-            <Shield className="w-6 h-6 text-matrix-green" />
+            <Shield className="w-6 h-6 text-[#00FF9D]" />
             DDoS Defense Rules & Protection State
           </h1>
-          <p className="text-xs text-cool-silver mt-1 font-sans">
+          <p className="text-xs text-gray-400 mt-1 font-sans">
             Automated rate limiting and bounded DDoS mitigations evaluated safely with zero host impact
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <StatusIndicator status={statusType} />
           {lastUpdated && (
-            <span className="text-xs text-cool-silver font-mono">
-              Updated: {lastUpdated.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })} IST
+            <span className="text-xs text-gray-400 font-mono">
+              Updated: {formatISTTime(lastUpdated)} IST
             </span>
           )}
           <Button
@@ -194,9 +198,8 @@ export default function MitigationPage() {
             size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="border-[rgba(75,85,99,0.4)] hover:border-matrix-green hover:text-matrix-green transition-colors"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-matrix-green" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-[#00FF9D]" : ""}`} />
             {isRefreshing ? "Refreshing..." : "Refresh"}
           </Button>
           {isEmergencyActive ? (
@@ -226,7 +229,7 @@ export default function MitigationPage() {
 
       {/* Emergency Active Alert Banner */}
       {isEmergencyActive && (
-        <div className="p-4 rounded-xl border border-rose-500/50 bg-rose-500/15 text-rose-200 flex items-center justify-between gap-4 shadow-xl">
+        <div className="p-4 rounded-xl border border-rose-500/50 bg-rose-500/15 text-rose-200 flex flex-wrap items-center justify-between gap-4 shadow-xl">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-400">
               <Power className="w-5 h-5" />
@@ -253,7 +256,7 @@ export default function MitigationPage() {
 
       {/* Action Notification */}
       {actionMessage && (
-        <div className="p-3.5 rounded-xl bg-obsidian border border-matrix-green/40 text-matrix-green text-xs font-mono flex items-center gap-2">
+        <div className="p-3.5 rounded-xl bg-[#090D16] border border-[#00FF9D]/40 text-[#00FF9D] text-xs font-mono flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-[#00FF9D] shrink-0" />
           <span>{actionMessage}</span>
         </div>
@@ -263,14 +266,14 @@ export default function MitigationPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="mb-2 pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-[#9CA3AF]">
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-gray-400">
               Protected Infrastructure
             </CardTitle>
             <Server className="w-4 h-4 text-[#10B981]" />
           </CardHeader>
           <CardContent className="text-xs font-mono space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-[#9CA3AF]">Host IP / Server:</span>
+              <span className="text-gray-400">Host IP / Server:</span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[#10B981] font-bold">
                   {mitigationStatus?.host_ip || "127.0.0.1"}
@@ -284,7 +287,7 @@ export default function MitigationPage() {
               </div>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-[#9CA3AF]">Default DNS Gateways:</span>
+              <span className="text-gray-400">Default DNS Gateways:</span>
               <span className="text-[#10B981] font-bold">
                 {mitigationStatus?.dns_gateways && mitigationStatus.dns_gateways.length > 0
                   ? mitigationStatus.dns_gateways.join(", ")
@@ -293,13 +296,13 @@ export default function MitigationPage() {
             </div>
             {mitigationStatus?.hostname && (
               <div className="flex justify-between items-center">
-                <span className="text-[#9CA3AF]">Node Name:</span>
-                <span className="text-[#9CA3AF] font-mono text-[11px]">
+                <span className="text-gray-400">Node Name:</span>
+                <span className="text-gray-300 font-mono text-[11px]">
                   {mitigationStatus.hostname}
                 </span>
               </div>
             )}
-            <p className="text-[11px] text-[#9CA3AF]/70 pt-1 font-sans">
+            <p className="text-[11px] text-gray-400 pt-1 font-sans">
               Mitigation requests targeting essential infrastructure are unconditionally rejected by policy.
             </p>
           </CardContent>
@@ -307,14 +310,14 @@ export default function MitigationPage() {
 
         <Card>
           <CardHeader className="mb-2 pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-[#9CA3AF]">
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-gray-400">
               Rate Limit Safety Bounds
             </CardTitle>
             <Shield className="w-4 h-4 text-[#06B6D4]" />
           </CardHeader>
           <CardContent className="text-xs font-mono space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-[#9CA3AF]">Permitted Rates:</span>
+              <span className="text-gray-400">Permitted Rates:</span>
               <span className="text-[#00FF9D] font-bold">
                 {mitigationStatus?.rate_limit_bounds
                   ? `${mitigationStatus.rate_limit_bounds.min_pps.toLocaleString()} - ${mitigationStatus.rate_limit_bounds.max_pps.toLocaleString()} PPS`
@@ -322,7 +325,7 @@ export default function MitigationPage() {
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-[#9CA3AF]">Permitted Durations:</span>
+              <span className="text-gray-400">Permitted Durations:</span>
               <span className="text-[#06B6D4] font-bold">
                 {mitigationStatus?.duration_bounds
                   ? `${mitigationStatus.duration_bounds.min_seconds} - ${mitigationStatus.duration_bounds.max_seconds} seconds`
@@ -330,12 +333,12 @@ export default function MitigationPage() {
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-[#9CA3AF]">Max Concurrency:</span>
-              <span className="text-[#9CA3AF] font-mono text-[11px]">
+              <span className="text-gray-400">Max Concurrency:</span>
+              <span className="text-gray-300 font-mono text-[11px]">
                 {mitigationStatus?.max_concurrent_limit || 100} active rules
               </span>
             </div>
-            <p className="text-[11px] text-[#9CA3AF]/70 pt-1 font-sans">
+            <p className="text-[11px] text-gray-400 pt-1 font-sans">
               All mitigation actions are time-bounded and expire automatically to prevent permanent blocks.
             </p>
           </CardContent>
@@ -343,34 +346,41 @@ export default function MitigationPage() {
 
         <Card>
           <CardHeader className="mb-2 pb-2">
-            <CardTitle className="text-xs font-mono uppercase tracking-wider text-[#9CA3AF]">
+            <CardTitle className="text-xs font-mono uppercase tracking-wider text-gray-400">
               Active Protection State
             </CardTitle>
             <AlertTriangle className="w-4 h-4 text-[#F59E0B]" />
           </CardHeader>
           <CardContent className="text-xs font-mono space-y-2">
             <div className="flex justify-between items-center">
-              <span className="text-[#9CA3AF]">Active Rules:</span>
+              <span className="text-gray-400">Active Rules:</span>
               <span className="text-[#00FF9D] font-bold">{activeCount} Rules Active</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-[#9CA3AF]">Target Cooldown:</span>
+              <span className="text-gray-400">Target Cooldown:</span>
               <span className="text-[#F59E0B] font-bold">
                 {mitigationStatus?.cooldown_ticks ?? 10} ticks cooldown
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-[#9CA3AF]">Shield Mode:</span>
-              <span className={`font-mono text-[11px] uppercase ${mitigationStatus?.shield_active ? "text-[#00FF9D]" : "text-[#9CA3AF]"}`}>
+              <span className="text-gray-400">Shield Mode:</span>
+              <span
+                className={`font-mono text-[11px] uppercase ${
+                  mitigationStatus?.shield_active ? "text-[#00FF9D]" : "text-gray-400"
+                }`}
+              >
                 {mitigationStatus?.shield_active ? "Shield Active" : "Standby / Fail-Closed"}
               </span>
             </div>
-            <p className="text-[11px] text-[#9CA3AF]/70 pt-1 font-sans">
+            <p className="text-[11px] text-gray-400 pt-1 font-sans">
               Cooldown guards prevent rapid rule oscillation and alert storms.
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Real-World Defensive Mitigation Rules (Milestone 3) */}
+      <DefensiveRulesCard />
 
       {/* Mitigations List Table */}
       <Card>
@@ -387,11 +397,14 @@ export default function MitigationPage() {
 
             {/* Filter */}
             <div className="flex items-center gap-2">
-              <label className="text-xs text-[#9CA3AF] font-mono">Status:</label>
+              <label htmlFor="mitigation-status-filter" className="text-xs text-gray-400 font-mono">
+                Status:
+              </label>
               <select
+                id="mitigation-status-filter"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-[#090D16] border border-[rgba(75,85,99,0.4)] rounded-lg px-2.5 py-1 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
+                className="bg-[#090D16] border border-gray-700/60 rounded-lg px-2.5 py-1 text-xs text-gray-200 font-mono focus:border-[#00FF9D] focus:outline-none"
               >
                 <option value="all">All Statuses</option>
                 <option value="active">Active</option>
@@ -404,26 +417,26 @@ export default function MitigationPage() {
         </CardHeader>
         <CardContent>
           {error && (
-            <div className="p-4 mb-4 rounded-xl border border-red-500/40 bg-[rgba(239,68,68,0.15)] text-[#EF4444] text-xs font-mono">
+            <div className="p-4 mb-4 rounded-xl border border-red-500/40 bg-red-500/10 text-[#EF4444] text-xs font-mono">
               Error fetching mitigations: {error.message}
             </div>
           )}
 
-          <div className="overflow-x-auto rounded-xl border border-[rgba(75,85,99,0.3)] bg-[#090D16]/80 font-mono text-xs">
-            <table className="w-full text-left border-collapse">
+          <div className="overflow-x-auto rounded-xl border border-gray-700/60 bg-[#090D16]/80 font-mono text-xs">
+            <table className="w-full text-left border-collapse" aria-label="Active Defense Rules Table">
               <thead>
-                <tr className="border-b border-[rgba(75,85,99,0.3)] bg-[#1F2937]/50 text-[#9CA3AF] text-[11px] uppercase tracking-wider">
-                  <th className="py-3 px-3">Action ID</th>
-                  <th className="py-3 px-3">Target IP</th>
-                  <th className="py-3 px-3">Rule Type</th>
-                  <th className="py-3 px-3">Rate Limit</th>
-                  <th className="py-3 px-3">Duration</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Mode</th>
-                  <th className="py-3 px-3 text-right">Action</th>
+                <tr className="border-b border-gray-800 bg-[#1F2937]/50 text-gray-400 text-[11px] uppercase tracking-wider">
+                  <th scope="col" className="py-3 px-3">Action ID</th>
+                  <th scope="col" className="py-3 px-3">Target IP</th>
+                  <th scope="col" className="py-3 px-3">Rule Type</th>
+                  <th scope="col" className="py-3 px-3">Rate Limit</th>
+                  <th scope="col" className="py-3 px-3">Duration</th>
+                  <th scope="col" className="py-3 px-3">Status</th>
+                  <th scope="col" className="py-3 px-3">Mode</th>
+                  <th scope="col" className="py-3 px-3 text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[rgba(75,85,99,0.2)]">
+              <tbody className="divide-y divide-gray-800/80">
                 {filteredMitigations.length > 0 ? (
                   filteredMitigations.map((item: MitigationItem) => {
                     const currentState = item.status || item.state || "unknown";
@@ -435,11 +448,11 @@ export default function MitigationPage() {
                           {item.action_id.slice(0, 10)}
                         </td>
                         <td className="py-3 px-3 text-gray-200">{item.target_ip}</td>
-                        <td className="py-3 px-3 text-[#9CA3AF] uppercase">{item.action_type}</td>
+                        <td className="py-3 px-3 text-gray-400 uppercase">{item.action_type}</td>
                         <td className="py-3 px-3 text-[#06B6D4]">
                           {item.rate_limit_pps ? `${item.rate_limit_pps.toLocaleString()} PPS` : "Rate Limit"}
                         </td>
-                        <td className="py-3 px-3 text-[#9CA3AF]">
+                        <td className="py-3 px-3 text-gray-400">
                           {item.duration_seconds}s
                         </td>
                         <td className="py-3 px-3">
@@ -483,7 +496,7 @@ export default function MitigationPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-[#9CA3AF]">
+                    <td colSpan={8} className="py-8 text-center text-gray-400">
                       No mitigation rules matching this filter recorded yet. Launch an attack in the Simulator to trigger automated defenses!
                     </td>
                   </tr>
