@@ -105,8 +105,3 @@ npm run dev
 - **[`RUN_GUIDE.md`](RUN_GUIDE.md):** Complete operator manual with PowerShell/curl scripts for demonstrating normal traffic, attacks, and Flash Crowds.
 - **[`DEPLOYMENT.md`](DEPLOYMENT.md):** Production DevSecOps deployment runbook with reverse proxy, TLS, and container security.
 - **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md):** Detailed system architecture specification with Mermaid diagrams.
-- **[`docs/BUG_FIX_REPORT.md`](docs/BUG_FIX_REPORT.md):** Comprehensive catalog of audited and resolved bugs.
-- **[`docs/OPTIMIZATION_REPORT.md`](docs/OPTIMIZATION_REPORT.md):** Performance, state management, and accessibility engineering report.
-- **[`docs/TEST_REPORT.md`](docs/TEST_REPORT.md):** Full test suite execution report across 94 backend tests and static checks.
-- **[`docs/TRANSFORMATION_AUDIT.md`](docs/TRANSFORMATION_AUDIT.md):** Complete technical audit matrix verifying all phases.
-- **[`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md):** Milestone completion matrix and SENTRIX 3.0 roadmap.
