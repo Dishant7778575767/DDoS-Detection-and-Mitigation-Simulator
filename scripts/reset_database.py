@@ -19,8 +19,8 @@ import time
 from pathlib import Path
 
 # Ensure backend root is on sys.path
-BACKEND_DIR = Path(__file__).resolve().parent.parent
-ROOT_DIR = BACKEND_DIR.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent
+BACKEND_DIR = ROOT_DIR / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
@@ -28,9 +28,6 @@ from dotenv import load_dotenv
 
 load_dotenv(ROOT_DIR / ".env")
 load_dotenv(BACKEND_DIR / ".env")
-
-from sqlalchemy import delete, func, select
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.storage.database import get_session_factory, init_db
@@ -44,6 +41,8 @@ from app.storage.models import (
     SimulationTickModel,
     ThresholdConfigModel,
 )
+from sqlalchemy import delete, func, select
+from sqlalchemy.exc import SQLAlchemyError
 
 
 def clear_database_tables(db_url: str | None = None, confirm: bool = False) -> None:

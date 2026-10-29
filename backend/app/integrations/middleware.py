@@ -16,7 +16,7 @@ import logging
 import time
 from collections.abc import Callable
 
-import httpx2 as httpx
+import httpx
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
