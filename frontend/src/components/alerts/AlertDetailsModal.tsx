@@ -3,13 +3,8 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { AlertTriangle, CheckCircle2, Lock, Shield } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/Modal";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Lock,
-  Shield,
-} from "@/components/ui/icons";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import type { AlertItem } from "@/types";
@@ -20,58 +15,51 @@ interface AlertDetailsModalProps {
 }
 
 export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
-  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [isSimulating, setIsSimulating] = useState(false);
   const [simulationResult, setSimulationResult] = useState<string | null>(null);
   const [simulationError, setSimulationError] = useState<string | null>(null);
 
   if (!alert) return null;
 
-  const rawSev = (alert.severity || "medium").toLowerCase();
+  const rawSev = (alert.severity || "low").toLowerCase();
   const isCritical = rawSev === "critical";
   const isHigh = rawSev === "high" || rawSev === "warning";
   const isMedium = rawSev === "medium";
 
-  // Friendly threat explanation
+  // Threat explanation based on genuine alert metadata
   let threatExplanation =
+    alert.description ||
     "Anomalous traffic spike detected. The AI brain observed traffic patterns exceeding safety thresholds.";
   let actionSuggestion = "Monitor connection rates and apply rate limiting if traffic worsens.";
 
   if (alert.title?.includes("SYN")) {
     threatExplanation =
-      "Fake connection spam attack (SYN Flood). Attackers are opening millions of half-open TCP requests to exhaust memory.";
-    actionSuggestion = "Block malicious IP & enforce TCP SYN Cookies.";
+      "SYN Flood pattern detected: high rate of connection attempts without completing the TCP handshake.";
+    actionSuggestion = "Enforce TCP SYN rate limiting and verify client handshake authenticity.";
   } else if (alert.title?.includes("UDP")) {
     threatExplanation =
-      "High-bandwidth pipe clogging attack (UDP Flood). Random packets are saturating the network pipeline.";
-    actionSuggestion = "Drop unverified UDP packets at the ingress gateway.";
+      "UDP Flood pattern detected: high-volume stateless packet flood saturating bandwidth.";
+    actionSuggestion = "Apply bandwidth rate limits and drop unverified UDP packets at the perimeter.";
   } else if (alert.title?.includes("HTTP")) {
     threatExplanation =
-      "Website overload attack (HTTP Flood). A swarm of bots is spamming heavy web pages to crash the server.";
-    actionSuggestion = "Trigger challenge / rate limiting on repetitive GET requests.";
+      "HTTP Flood pattern detected: excessive application-layer requests aimed at exhausting web workers.";
+    actionSuggestion = "Apply rate limiting or challenge rules on targeted endpoints.";
   } else if (alert.title?.includes("Slow")) {
     threatExplanation =
-      "Stealth slow connection attack (Slowloris). Tiny data fragments are sent very slowly to hold connection sockets open silently.";
-    actionSuggestion = "Terminate long-hanging connections with short keep-alive timeouts.";
+      "Slow connection exhaustion (Slowloris) pattern detected: sockets held open with minimal byte rates.";
+    actionSuggestion = "Reduce keep-alive timeouts and enforce minimum transfer speed thresholds.";
   }
 
-  // Sanitize target IP: strip ports/whitespace/trailing dots
-  let targetIp = (alert.target_ip || "").trim().replace(/\.+$/, "");
-  if (targetIp.includes(":")) {
-    targetIp = targetIp.split(":")[0];
-  }
-
-  const isLoopbackOrProtected =
-    targetIp === "127.0.0.1" ||
-    targetIp === "localhost" ||
-    targetIp === "192.168.1.1" ||
-    targetIp === "10.0.0.1" ||
-    targetIp.startsWith("127.");
-
-  const isIpPattern = /^(\d{1,3}\.){3}\d{1,3}$/.test(targetIp);
-  const effectiveIp =
-    !isIpPattern || isLoopbackOrProtected ? "192.168.1.100" : targetIp;
+  // Clean actual target IP
+  const effectiveIp = alert.target_ip ? alert.target_ip.trim().replace(/\.+$/, "") : "";
+  const hasValidIp = effectiveIp.length > 0;
 
   const handleSimulateMitigation = async () => {
+    if (!hasValidIp) {
+      setSimulationError("Cannot trigger mitigation: no target address recorded for this event.");
+      return;
+    }
+
     setIsSimulating(true);
     setSimulationResult(null);
     setSimulationError(null);
@@ -85,7 +73,7 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
         reason: `Operator manual simulation for alert ${alert.alert_id}`,
       });
       setSimulationResult(
-        `Action verified! Rate limited to ${res.rate_limit_pps.toLocaleString()} PPS for ${res.duration_seconds}s on ${effectiveIp} (Safely executed in simulation mode with 0 downtime).`
+        `Action verified! Rate limited to ${res.rate_limit_pps.toLocaleString()} req/sec for ${res.duration_seconds}s on ${effectiveIp} (Safely executed in simulation mode with 0 downtime).`
       );
     } catch (err: unknown) {
       setSimulationError(getErrorMessage(err, "Safety Gate rejected request."));
@@ -99,7 +87,7 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
       isOpen={!!alert}
       onClose={onClose}
       title="Threat Investigation & Defense Action"
-      description={`Target Server: ${alert.target_ip || "Under Inspection"}`}
+      description={`Target: ${hasValidIp ? effectiveIp : "Unspecified target"}`}
       variant={isCritical ? "danger" : "info"}
     >
       <div className="space-y-4 text-xs font-mono">
@@ -132,19 +120,16 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
           </p>
         </div>
 
-        {/* What AI Found & Recommended Action */}
+        {/* Target & Action Summary */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-sans">
           <div className="p-3 rounded-lg bg-[#090D16] border border-gray-700/50 space-y-1">
             <span className="text-[10px] font-mono text-[#06B6D4] font-bold block uppercase tracking-wider">
               Target Being Attacked:
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-gray-200 font-bold font-mono text-xs">{effectiveIp}</span>
-              {isLoopbackOrProtected && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">
-                  Virtual Node
-                </span>
-              )}
+              <span className="text-gray-200 font-bold font-mono text-xs">
+                {hasValidIp ? effectiveIp : "None specified"}
+              </span>
             </div>
             <span className="text-[10px] text-gray-400 block font-mono">
               Status: {alert.status === "active" ? "ACTIVE" : "RESOLVED"}
@@ -153,7 +138,7 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
 
           <div className="p-3 rounded-lg bg-[#090D16] border border-gray-700/50 space-y-1">
             <span className="text-[10px] font-mono text-[#00FF9D] font-bold block uppercase tracking-wider">
-              Recommended Fix:
+              Recommended Action:
             </span>
             <p className="text-[11px] text-gray-300 leading-tight">
               {actionSuggestion}
@@ -175,16 +160,16 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
             <span className="text-[#06B6D4] font-bold">Smart Rate-Limiting</span>
           </div>
           <div className="flex justify-between text-gray-300">
-            <span className="text-gray-400">AI Detection Engine:</span>
-            <span>Random Forest AI</span>
+            <span className="text-gray-400">Detection Engine:</span>
+            <span>Random Forest Model</span>
           </div>
           <div className="flex justify-between text-gray-300">
-            <span className="text-gray-400">Target Safe Node:</span>
-            <span className="text-gray-200 font-mono">{effectiveIp}</span>
+            <span className="text-gray-400">Target Address:</span>
+            <span className="text-gray-200 font-mono">{hasValidIp ? effectiveIp : "N/A"}</span>
           </div>
           <div className="flex justify-between text-gray-300">
-            <span className="text-gray-400">Allowed Safe Speed:</span>
-            <span className="text-[#00FF9D] font-bold">5,000 PPS</span>
+            <span className="text-gray-400">Allowed Rate:</span>
+            <span className="text-[#00FF9D] font-bold">5,000 req/sec</span>
           </div>
           <div className="flex justify-between text-gray-300">
             <span className="text-gray-400">Rule Expiry:</span>
@@ -205,7 +190,7 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
           <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/40 text-rose-300 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             <div className="font-sans leading-relaxed">
-              <div className="font-bold text-xs">Safety Gate Blocked Request:</div>
+              <div className="font-bold text-xs">Action Rejected:</div>
               <div className="text-[11px] text-rose-200 mt-0.5">{simulationError}</div>
             </div>
           </div>
@@ -219,6 +204,7 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
             variant="primary"
             size="sm"
             loading={isSimulating}
+            disabled={!hasValidIp}
             onClick={handleSimulateMitigation}
           >
             <Shield className="w-3.5 h-3.5" />

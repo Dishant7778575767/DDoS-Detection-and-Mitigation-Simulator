@@ -60,12 +60,16 @@ export interface AnalyzeFlowRequest {
 }
 
 export interface AnalyzeFlowResponse {
+  event_id?: string;
   prediction: string;
   score: number;
   score_type: string;
   model_version: string;
   feature_schema_version: string;
+  traffic_threshold_exceeded?: boolean;
+  policy_decision?: string;
+  mitigation_mode?: string;
   timestamp: string;
-  interpretation: string;
+  interpretation?: string;
 }
 

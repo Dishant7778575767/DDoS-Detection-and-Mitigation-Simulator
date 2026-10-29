@@ -1,19 +1,22 @@
-# SENTRIX Production Deployment & DevSecOps Guide
+# SENTRIX Deployment & Controlled Evaluation Guide
 
-This guide describes how to deploy the **SENTRIX DDoS Detection, Monitoring & Mitigation Platform** in production, staging, or authorized security evaluation environments.
+This guide describes how to run SENTRIX for development, staging, and controlled evaluation. SENTRIX is an intelligent DDoS detection and defensive mitigation platform: it ingests real-time edge telemetry (AWS CloudFront real-time logs via Amazon Kinesis Data Streams), evaluates statistical EWMA baselines and ML inference, and exports reviewable mitigation configurations for AWS WAFv2, Nginx, and Caddy. Edge mitigations require explicit operator review and deployment to AWS WAFv2.
 
 ---
 
 ## 1. Architecture Overview
 
-SENTRIX operates as an autonomous web defense appliance:
-- **Frontend:** Next.js 16 standalone web application (Port 3000) providing the SOC Command Center, Live Telemetry Stream, Threat Center, and isolated Cyber Range simulator.
+Current application components:
+- **Frontend:** Next.js 16 standalone web application (Port 3000) providing the SOC Command Center, Live Telemetry Stream, Threat Center, Defense Shield, and Cyber Range simulator.
 - **Backend:** FastAPI high-performance asynchronous API (Port 8000) providing:
-  - Real-time HTTP log & request ingestion pipeline (`/api/v1/telemetry/ingress`)
+  - AWS CloudFront Real-Time Log ingestion via Amazon Kinesis Data Streams (`kinesis_consumer`)
+  - Real-time HTTP log & request ingestion (`/api/v1/telemetry/ingress` and `/api/v1/integrations/aws/kinesis/mock-ingest`)
   - Adaptive EWMA baseline & Z-score velocity detection (`/api/v1/detection/live`)
-  - Random Forest ML classifier (CIC-DDoS2019 dataset)
-  - Defensive Rate-Limiting & Reverse-Proxy Configuration Exporter (`/api/v1/mitigations/export/nginx`)
-  - Isolated discrete-event chaos simulator (`/api/v1/simulations`)
+  - Random Forest ML classifier (trained on CIC-DDoS2019 dataset)
+  - Defensive mitigation state machine with staged Dry-Run rules (`/api/v1/mitigations/defensive`)
+  - Configuration snippet exporters for AWS WAFv2, Nginx, and Caddy
+  - Discrete-event chaos simulator (`/api/v1/simulations`)
+- **Worker:** Dedicated standalone Kinesis streaming worker (`python -m app.workers.kinesis_worker`) consuming CloudFront real-time logs asynchronously without blocking API request threads.
 
 ---
 
@@ -31,96 +34,167 @@ cd DDoS-Detection-and-Mitigation-Simulator
 # Copy environment template
 cp .env.example .env
 
-# Generate a strong 32-character authentication token
+# Generate a strong API token; Compose refuses to start without it
 openssl rand -hex 16
-# Edit .env and paste token into API_AUTH_TOKEN
 ```
+Edit `.env` and configure `API_AUTH_TOKEN`. If connecting to AWS Kinesis, set `AWS_REGION=us-east-1` and `AWS_KINESIS_STREAM_NAME=sentrix-cloudfront-realtime-logs`.
 
-### Step 2: Build & Start Containers
+### Step 2: Launch SENTRIX Core Services
 ```bash
 docker compose up -d --build
 ```
 
-### Step 3: Verify Health Checks
+### Step 3: (Optional) Launch Dedicated Kinesis Worker Container
 ```bash
-# Check container status
-docker compose ps
-
-# Backend health probe
-curl -f http://localhost:8000/api/v1/health
-
-# Access Web Dashboard:
-# http://localhost:3000
+docker compose --profile aws-worker up -d
 ```
 
----
-
-## 3. Integrating Live Web Application Telemetry
-
-To protect your web applications, choose either **Log Streaming** or **In-App Middleware**.
-
-### Option A: Reverse-Proxy Log Ingestion (Nginx / Apache / Caddy)
-Configure your reverse proxy to emit JSON or Combined access logs to SENTRIX via curl/promtail/fluent-bit:
-
+### Step 4: Verify Health & Deployment
 ```bash
-curl -X POST http://localhost:8000/api/v1/telemetry/ingress \
-  -H "Authorization: Bearer <API_AUTH_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "raw_logs": [
-      "198.51.100.22 - - [28/Oct/2026:20:00:00 +0000] \"GET /api/v1/checkout HTTP/1.1\" 200 1450 \"-\" \"Mozilla/5.0\" 0.045"
-    ],
-    "anonymize_ips": true,
-    "source_identifier": "edge-proxy-01"
-  }'
+# Check Backend Health
+curl -s http://localhost:8000/api/v1/health -H "Authorization: Bearer <YOUR_API_TOKEN>"
+
+# Check Kinesis Integration Status
+curl -s http://localhost:8000/api/v1/integrations/aws/kinesis/status -H "Authorization: Bearer <YOUR_API_TOKEN>"
 ```
 
-### Option B: FastAPI / Starlette In-App Middleware
-If your web application is built on FastAPI or Starlette, drop in the SENTRIX telemetry middleware:
+Access the SOC Command Center at `http://localhost:3000`.
 
-```python
-from fastapi import FastAPI
-from app.integrations.middleware import SentrixTelemetryMiddleware
+---
 
-app = FastAPI()
+## 3. Local Development Quickstart (Without Docker)
 
-# Mount SENTRIX Telemetry Middleware
-app.add_middleware(
-    SentrixTelemetryMiddleware,
-    sentrix_endpoint="http://localhost:8000/api/v1/telemetry/ingress",
-    api_token="<API_AUTH_TOKEN>",
-    batch_size=50,
-    flush_interval_seconds=2.0,
-    anonymize_ips=True,
-)
+### Backend:
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Or on Windows: .\.venv\Scripts\activate
+pip install -e .
+cp ../.env.example .env
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Frontend:
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
 ---
 
-## 4. Exporting & Applying Defensive Mitigations
+## 4. AWS CloudFront & Amazon Kinesis Data Streams Integration
 
-When a threat (e.g. Volumetric HTTP Flood, Credential Stuffing, or Slowloris) is detected:
-1. Navigate to **Threat Center** (`/threats`) and click **"Propose Staged Mitigation"** (creates rule in safe `DRY_RUN` mode).
-2. Go to **Defense Shield** (`/mitigation`) to review simulated blocked requests vs legitimate traffic.
-3. Once approved, click **"Export Nginx"** or **"Export Caddyfile"** to download the configuration snippet:
-   ```bash
-   # Download active Nginx blocklist directly:
-   curl -H "Authorization: Bearer <API_AUTH_TOKEN>" \
-        http://localhost:8000/api/v1/mitigations/export/nginx \
-        -o /etc/nginx/conf.d/sentrix_defense.conf
+SENTRIX integrates natively with AWS CloudFront Real-Time Access Logs and Amazon Kinesis Data Streams.
 
-   # Reload Nginx without downtime:
-   nginx -t && nginx -s reload
-   ```
+### Target Architecture:
+```text
+Internet ──► AWS CloudFront CDN / AWS Shield Standard / AWS WAFv2 ──► Protected Origin
+                  │ (Real-Time Access Logs)
+                  ▼
+         Amazon Kinesis Data Streams (sentrix-cloudfront-realtime-logs)
+                  │
+                  ▼
+         SENTRIX Dedicated Kinesis Worker (Asynchronous Polling Service)
+                  │
+                  ▼ (Tab-Delimited Normalization, TTFB conversion, Dedup & Checkpointing)
+         Normalized Telemetry (RequestTelemetryItem)
+                  │
+                  ▼
+         Sliding-Window Aggregator ──► Adaptive EWMA & Random Forest Classifier
+                                                     │
+                                                     ▼
+                                          Proposed Defensive Rule
+                                                     │ (Operator Approval)
+                                                     ▼
+                                          AWS WAFv2 Export (CLOUDFRONT Scope, us-east-1)
+```
+
+### Key Architectural Differences from Standard CloudFront Logs:
+1. **Real-Time vs Standard Logs:** Standard CloudFront access logs are delivered to Amazon S3 in multi-minute batches (often 5–20 minutes delay), which is unacceptable for real-time DDoS mitigation. CloudFront Real-Time Logs stream events within seconds directly into Amazon Kinesis Data Streams.
+2. **Kinesis Polling vs Arbitrary HTTP Push:** CloudFront does not push logs via arbitrary HTTP POST endpoints. Telemetry is streamed into a Kinesis Data Stream and consumed by a dedicated SENTRIX background worker (`app.workers.kinesis_worker`).
+3. **Data Format & Field Mapping:** CloudFront real-time logs are tab-delimited (`\t`) records with a configurable field ordering defined in `backend/app/ingestion/cloudfront_parser.py` (`DEFAULT_CLOUDFRONT_LOG_FIELDS`).
+4. **Unit Conversion:** `time-to-first-byte` in CloudFront logs is emitted in floating-point seconds (e.g. `0.045` s); SENTRIX converts this to milliseconds (`45.0` ms) for unified pipeline metrics.
+5. **Deduplication & Privacy:** CloudFront's `x-edge-request-id` serves as the unique deduplication key persisted in `cloudfront_kinesis_events`. Query parameters (`cs-uri-query`) and cookies (`cs-cookie`) are stripped from normalized URIs to preserve user privacy.
+
+### Step-by-Step AWS Setup Guide:
+
+#### Step 1: Create Amazon Kinesis Data Stream
+```bash
+aws kinesis create-stream \
+    --stream-name sentrix-cloudfront-realtime-logs \
+    --shard-count 1 \
+    --region us-east-1
+```
+
+#### Step 2: Create IAM Role for CloudFront Real-Time Logging
+Create an IAM role allowing CloudFront service principal (`cloudfront.amazonaws.com`) to write records into your stream:
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kinesis:DescribeStreamSummary",
+                "kinesis:DescribeStream",
+                "kinesis:PutRecord",
+                "kinesis:PutRecords"
+            ],
+            "Resource": "arn:aws:kinesis:us-east-1:<ACCOUNT_ID>:stream/sentrix-cloudfront-realtime-logs"
+        }
+    ]
+}
+```
+
+#### Step 3: Create CloudFront Real-Time Log Configuration
+Configure the log fields matching SENTRIX's standard field set:
+```bash
+aws cloudfront create-realtime-log-config \
+    --name sentrix-realtime-logs \
+    --sampling-rate 100 \
+    --fields "timestamp" "c-ip" "time-to-first-byte" "sc-status" "sc-bytes" "cs-method" "cs-protocol" "cs-host" "cs-uri-stem" "cs-uri-query" "c-port" "x-edge-location" "x-edge-request-id" "x-host-header" "time-taken" "cs-protocol-version" "c-ip-version" "cs-user-agent" \
+    --end-points StreamType=Kinesis,KinesisStreamConfig='{RoleARN=arn:aws:iam::<ACCOUNT_ID>:role/CloudFrontKinesisRole,StreamARN=arn:aws:kinesis:us-east-1:<ACCOUNT_ID>:stream/sentrix-cloudfront-realtime-logs}'
+```
+Attach this real-time log configuration to your CloudFront distribution's default cache behavior.
+
+#### Step 4: Run the SENTRIX Kinesis Worker
+Launch the worker service using standard IAM credentials (via IAM Role on EC2/ECS/EKS or environment credentials):
+```bash
+python -m app.workers.kinesis_worker
+```
+The worker will:
+- Discover active shards on `sentrix-cloudfront-realtime-logs`
+- Resume from persistent sequence number checkpoints in table `kinesis_checkpoints`
+- Ingest and deduplicate batches using table `cloudfront_kinesis_events`
+- Push items into the active sliding-window telemetry aggregator
 
 ---
 
-## 5. Security & DevSecOps Hardening Checklist
+## 5. AWS WAFv2 Defensive Mitigation & Deployment
 
-- [x] **Non-Root Execution:** Docker containers run under dedicated unprivileged users (`sentrix:10001` and `nextjs:1001`).
-- [x] **Subnet Privacy Masking:** Client IP addresses are masked to `/24` subnets (`198.51.100.0/24`) by default to protect user privacy.
-- [x] **Protected Infrastructure Guard:** Loopback (`127.0.0.1`), DNS gateways (`8.8.8.8`, `1.1.1.1`), and internal routers can never be targeted for mitigation.
-- [x] **Mandatory Rule Expiry (TTL):** Every defensive rule automatically expires after a configured TTL (e.g., 600s) to prevent permanent accidental lockouts.
-- [x] **Emergency Kill-Switch:** Instant operator kill-switch halts all mitigations across the fleet in $< 1$ millisecond.
-- [x] **Traceability:** Dynamic `X-Request-ID` is stamped on every incoming request and propagated to logs and audit trails.
+SENTRIX generates ready-to-deploy AWS WAFv2 artifacts for approved IP blocks:
 
+> [!IMPORTANT]
+> **AWS WAFv2 CloudFront Scope Requirement:**
+> AWS requires that all WebACLs and IPSets attached to CloudFront distributions MUST be created in AWS Region `us-east-1` with `--scope CLOUDFRONT`.
+
+### 1. Export Formats Available in SOC Defense Shield (`/mitigation`):
+- **AWS WAFv2 JSON:** Complete WebACL Rule definitions and IPSet schema (`GET /api/v1/mitigations/export/aws-waf`).
+- **AWS CLI Deployment Script:** Executable bash script (`GET /api/v1/mitigations/export/aws-waf/cli`) that checks if the IPSet exists, queries its lock token, and atomically updates or creates it in `us-east-1`.
+- **Nginx Configuration:** Reverse proxy blocklist snippet (`GET /api/v1/mitigations/export/nginx`).
+- **Caddy Configuration:** Caddyfile route matcher snippet (`GET /api/v1/mitigations/export/caddy`).
+
+### 2. AWS Shield Standard Coexistence:
+- **L3/L4 Volumetric Attacks:** AWS Shield Standard is automatically active at all CloudFront points of presence worldwide and absorbs SYN floods, UDP reflection, and network-layer floods at zero cost.
+- **L7 Application Attacks:** SENTRIX detects sophisticated Layer-7 application floods, credential stuffing, and Slowloris connection starvation, proposing surgical IPSet updates for AWS WAFv2.
+
+---
+
+## 6. Security Controls & Best Practices
+
+- **Zero Hardcoded Secrets:** AWS credentials rely on default credential provider chains (IAM instance profiles, ECS task roles, or environment variables). Static keys must never be committed.
+- **Data Privacy & GDPR Compliance:** Telemetry normalizer strips query parameters and sensitive headers from URIs before persistence and aggregation.
+- **Fail-Closed Safety Gate:** All mitigation rules undergo strict RFC 1918 private network allowlist verification, maximum TTL enforcement (max 300s), and emergency kill-switch checks.
+- **Operator-in-the-Loop:** Rules default to `DRY_RUN` mode (which translates to AWS WAF `Count` action) for validation before active `Block` enforcement.

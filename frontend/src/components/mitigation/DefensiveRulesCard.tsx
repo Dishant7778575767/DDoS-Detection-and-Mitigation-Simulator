@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/icons";
 import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Pagination } from "@/components/ui/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 import {
   Card,
   CardContent,
@@ -28,6 +30,16 @@ export function DefensiveRulesCard() {
 
   const fetchRules = useCallback(() => api.getDefensiveRules(true), []);
   const { data: rules, refresh } = usePolling<DefensiveRule[]>(fetchRules, 3000);
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginatedItems: paginatedRules,
+    setPage,
+    setPageSize,
+  } = usePagination(rules || [], 5);
 
   const handleApprove = async (ruleId: string) => {
     setApprovingId(ruleId);
@@ -90,8 +102,8 @@ export function DefensiveRulesCard() {
       await api.downloadNginxConfig();
       setActionMsg("Downloaded sentrix_nginx_defense.conf successfully.");
       setTimeout(() => setActionMsg(null), 3500);
-    } catch {
-      window.open(api.getNginxExportUrl(), "_blank");
+    } catch (error) {
+      setActionMsg(error instanceof Error ? error.message : "Nginx export failed");
     }
   };
 
@@ -100,8 +112,28 @@ export function DefensiveRulesCard() {
       await api.downloadCaddyConfig();
       setActionMsg("Downloaded Caddyfile_sentrix.snippet successfully.");
       setTimeout(() => setActionMsg(null), 3500);
-    } catch {
-      window.open(api.getCaddyExportUrl(), "_blank");
+    } catch (error) {
+      setActionMsg(error instanceof Error ? error.message : "Caddy export failed");
+    }
+  };
+
+  const handleExportAwsWaf = async () => {
+    try {
+      await api.downloadAwsWafConfig();
+      setActionMsg("Downloaded sentrix_aws_wafv2.json successfully.");
+      setTimeout(() => setActionMsg(null), 3500);
+    } catch (error) {
+      setActionMsg(error instanceof Error ? error.message : "AWS WAF export failed");
+    }
+  };
+
+  const handleExportAwsCli = async () => {
+    try {
+      await api.downloadAwsWafCli();
+      setActionMsg("Downloaded sentrix_aws_waf_deploy.sh successfully.");
+      setTimeout(() => setActionMsg(null), 3500);
+    } catch (error) {
+      setActionMsg(error instanceof Error ? error.message : "AWS WAF CLI export failed");
     }
   };
 
@@ -114,10 +146,9 @@ export function DefensiveRulesCard() {
             Real-World Defensive Policies & Staged Dry-Run Rules
           </CardTitle>
           <CardDescription>
-            Defensive rate-limiting and reverse proxy firewall integration (Milestone 3)
+            Defensive rate-limiting and reverse proxy firewall integration
           </CardDescription>
         </div>
-        <Badge variant="matrix">Milestone 3</Badge>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -171,6 +202,24 @@ export function DefensiveRulesCard() {
                 <Download className="w-3.5 h-3.5 mr-1 text-[#06B6D4]" />
                 Export Caddyfile
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleExportAwsWaf}
+                className="text-xs font-mono"
+              >
+                <Download className="w-3.5 h-3.5 mr-1 text-[#F59E0B]" />
+                Export AWS WAFv2
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleExportAwsCli}
+                className="text-xs font-mono"
+              >
+                <Download className="w-3.5 h-3.5 mr-1 text-[#EC4899]" />
+                Export AWS CLI (.sh)
+              </Button>
             </div>
           </div>
 
@@ -187,7 +236,8 @@ export function DefensiveRulesCard() {
               No defensive mitigation rules configured. Propose a rule above or trigger one from the Threat Center.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="space-y-3">
+              <div className="overflow-x-auto">
               <table className="w-full text-left font-mono text-xs">
                 <thead className="bg-[#111827]/70 text-gray-400 uppercase text-[10px]">
                   <tr>
@@ -201,7 +251,7 @@ export function DefensiveRulesCard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/60">
-                  {rules.map((rule) => {
+                  {paginatedRules.map((rule) => {
                     const isDryRun = rule.mode === "DRY_RUN";
                     const isActive = rule.mode === "ACTIVE";
 
@@ -260,6 +310,16 @@ export function DefensiveRulesCard() {
                   })}
                 </tbody>
               </table>
+            </div>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              pageSize={pageSize}
+              totalItems={totalItems}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              pageSizeOptions={[5, 10, 20]}
+            />
             </div>
           )}
         </div>

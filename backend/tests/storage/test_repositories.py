@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from collections.abc import Generator
+
 """Unit tests for database storage repositories."""
 
 import pytest
@@ -16,7 +20,7 @@ from app.storage.repositories import (
 
 
 @pytest.fixture
-def db_session() -> Session:
+def db_session() -> Generator[Session, None, None]:
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

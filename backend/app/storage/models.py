@@ -1,7 +1,7 @@
 """SQLAlchemy database models for SENTRIX persistence.
 
 Defines tables for observations, detections, alerts, mitigation lifecycle,
-threshold configurations, and structured audit logs.
+threshold configurations, structured audit logs, and AWS CloudFront/Kinesis ingestion.
 """
 
 from __future__ import annotations
@@ -10,6 +10,42 @@ from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.storage.database import Base
+
+
+class CloudflareLogpushEventModel(Base):
+    """(Deprecated) Deduplication keys for legacy Cloudflare HTTP request log deliveries."""
+
+    __tablename__ = "cloudflare_logpush_events"
+
+    ray_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    timestamp: Mapped[str] = mapped_column(String(40), index=True)
+    received_at: Mapped[str] = mapped_column(String(40), index=True)
+
+
+class CloudFrontKinesisEventModel(Base):
+    """Deduplication keys and delivery tracking for AWS CloudFront real-time access log events ingested via Kinesis."""
+
+    __tablename__ = "cloudfront_kinesis_events"
+
+    request_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    timestamp: Mapped[str] = mapped_column(String(40), index=True)
+    received_at: Mapped[str] = mapped_column(String(40), index=True)
+    stream_name: Mapped[str] = mapped_column(String(128), index=True)
+    shard_id: Mapped[str] = mapped_column(String(128), index=True)
+    sequence_number: Mapped[str] = mapped_column(String(128), index=True)
+
+
+class KinesisCheckpointModel(Base):
+    """Durable sequence number checkpoints per Kinesis stream shard."""
+
+    __tablename__ = "kinesis_checkpoints"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    stream_name: Mapped[str] = mapped_column(String(128), index=True)
+    shard_id: Mapped[str] = mapped_column(String(128), index=True)
+    last_sequence_number: Mapped[str] = mapped_column(String(128))
+    records_processed: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[str] = mapped_column(String(40), index=True)
 
 
 class ObservationModel(Base):

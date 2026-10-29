@@ -7,6 +7,7 @@ schema sanitization, and alert cooldown behavior.
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,7 @@ FIXTURES_PATH = (
 
 
 @pytest.fixture
-def db_session(tmp_path: Path) -> Session:
+def db_session(tmp_path: Path) -> Generator[Session, None, None]:
     db_file = tmp_path / "tc_test.db"
     engine = create_engine(f"sqlite:///{db_file}")
     Base.metadata.create_all(engine)
@@ -44,7 +45,7 @@ def db_session(tmp_path: Path) -> Session:
 
 
 @pytest.fixture(autouse=True)
-def ensure_safety_gate_clean() -> None:
+def ensure_safety_gate_clean() -> Generator[None, None, None]:
     set_emergency_disabled(False)
     try:
         yield

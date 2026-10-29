@@ -20,6 +20,14 @@ COPY frontend/ ./
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production
 
+# NEXT_PUBLIC_* values are compiled into the browser bundle at build time.
+# Docker Compose uses the same-origin server proxy, so don't point the browser
+# directly at the backend container or a loopback address.
+ARG NEXT_PUBLIC_USE_PROXY=true
+ARG NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+ENV NEXT_PUBLIC_USE_PROXY=${NEXT_PUBLIC_USE_PROXY} \
+    NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 RUN npm run build
 
 # Stage 3: Minimal Standalone Production Runner

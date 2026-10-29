@@ -35,6 +35,13 @@ def validate_flow_features(features: dict[str, Any], schema_version: str) -> Non
             f"Feature schema version '{schema_version}' is unsupported. Current active version is '{FEATURE_SCHEMA_VERSION}'."
         )
 
+    from app.features.preprocess import derive_missing_features_if_possible
+
+    features_derived = derive_missing_features_if_possible(features)
+    for k, v in features_derived.items():
+        if k not in features:
+            features[k] = v
+
     # Check for missing features
     missing = [name for name in FEATURE_NAMES if name not in features]
     if missing:

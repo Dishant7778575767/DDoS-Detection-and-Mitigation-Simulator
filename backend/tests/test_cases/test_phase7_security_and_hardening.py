@@ -71,7 +71,7 @@ def client(
 
 
 @pytest.fixture(autouse=True)
-def clean_safety_state() -> None:
+def clean_safety_state() -> Generator[None, None, None]:
     set_emergency_disabled(False)
     yield
     set_emergency_disabled(False)

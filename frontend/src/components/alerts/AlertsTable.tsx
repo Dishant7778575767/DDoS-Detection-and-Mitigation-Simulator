@@ -3,7 +3,9 @@
 import { useRouter } from "next/navigation";
 import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Pagination } from "@/components/ui/Pagination";
 import { Shield, Terminal } from "@/components/ui/icons";
+import { usePagination } from "@/hooks/usePagination";
 import { formatISTDateTime } from "@/lib/formatters";
 import type { AlertItem } from "@/types";
 
@@ -14,6 +16,16 @@ interface AlertsTableProps {
 
 export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
   const router = useRouter();
+
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    totalItems,
+    paginatedItems: paginatedAlerts,
+    setPage,
+    setPageSize,
+  } = usePagination(alerts, 10);
 
   if (alerts.length === 0) {
     return (
@@ -28,7 +40,8 @@ export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-700/60 bg-[#090D16]/80 font-mono text-xs">
+    <div className="space-y-3">
+      <div className="overflow-x-auto rounded-xl border border-gray-700/60 bg-[#090D16]/80 font-mono text-xs">
       <table className="w-full text-left border-collapse" aria-label="Security Threat Incidents">
         <thead>
           <tr className="border-b border-gray-800 bg-[#1F2937]/50 text-gray-400 text-[11px] uppercase tracking-wider">
@@ -42,7 +55,7 @@ export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-800/80">
-          {alerts.map((alert) => {
+          {paginatedAlerts.map((alert) => {
             const formattedTime = formatISTDateTime(alert.timestamp);
             const rawSev = (alert.severity || "low").toLowerCase();
             const isCritical = rawSev === "critical";
@@ -157,5 +170,15 @@ export function AlertsTable({ alerts, onSelectAlert }: AlertsTableProps) {
         </tbody>
       </table>
     </div>
+    <Pagination
+      currentPage={currentPage}
+      totalPages={totalPages}
+      pageSize={pageSize}
+      totalItems={totalItems}
+      onPageChange={setPage}
+      onPageSizeChange={setPageSize}
+      pageSizeOptions={[5, 10, 20, 50]}
+    />
+  </div>
   );
 }

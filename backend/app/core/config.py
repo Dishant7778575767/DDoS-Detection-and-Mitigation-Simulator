@@ -31,6 +31,22 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./sentrix.db"
     api_auth_required: bool = True
     api_auth_token: SecretStr | None = None
+
+    # AWS CloudFront & Amazon Kinesis Data Streams settings
+    aws_region: str = "ap-south-1"
+    aws_kinesis_stream_name: str = "sentrix-cloudfront-realtime-logs"
+    aws_kinesis_consumer_enabled: bool = False
+    aws_kinesis_batch_size: int = 1000
+    aws_kinesis_iterator_type: str = "LATEST"
+    aws_kinesis_poll_interval_seconds: float = 1.0
+    aws_kinesis_checkpoint_interval_seconds: float = 5.0
+    aws_kinesis_dedup_retention_hours: int = 24
+    cloudfront_log_fields: str = ""
+    cloudfront_kinesis_mock_mode: bool = False
+    aws_access_key_id: SecretStr | None = None
+    aws_secret_access_key: SecretStr | None = None
+    aws_session_token: SecretStr | None = None
+
     keepalive_secret: SecretStr | None = None
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 

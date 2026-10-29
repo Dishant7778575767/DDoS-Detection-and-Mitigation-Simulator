@@ -592,7 +592,13 @@ def emergency_disable_mitigations(
 
 from fastapi.responses import PlainTextResponse
 
-from app.mitigation.config_exporter import export_caddy_config, export_nginx_config
+from app.mitigation.config_exporter import (
+    export_aws_wafv2_cli_script,
+    export_aws_wafv2_ipset,
+    export_aws_wafv2_rules,
+    export_caddy_config,
+    export_nginx_config,
+)
 from app.mitigation.defensive_engine import (
     DefensiveActionType,
     DefensiveMitigationRule,
@@ -602,14 +608,16 @@ from app.mitigation.defensive_engine import (
 
 class ProposeDefensiveRuleRequest(BaseModel):
     target_ip_or_cidr: str = Field(
-        ..., description="Target IPv4, IPv6, or CIDR network"
+        ...,
+        min_length=1,
+        max_length=128,
+        description="Target IPv4, IPv6, or CIDR network",
     )
     action_type: DefensiveActionType = Field(default=DefensiveActionType.RATE_LIMIT)
     rate_limit_rps: int = Field(default=10, ge=1, le=50000)
     burst_capacity: int = Field(default=20, ge=1, le=50000)
     ttl_seconds: int = Field(default=600, ge=30, le=86400)
-    reason: str = Field(default="Suspicious traffic pattern detected")
-    dry_run: bool = Field(default=True, description="Staged Dry-Run mode by default")
+    reason: str = Field(default="Suspicious traffic pattern detected", max_length=512)
 
 
 @router.post(
@@ -635,7 +643,9 @@ def propose_defensive_rule(
             burst_capacity=payload.burst_capacity,
             ttl_seconds=payload.ttl_seconds,
             reason=payload.reason,
-            dry_run=payload.dry_run,
+            # API proposals always start staged; activation requires the separate
+            # approval endpoint.
+            dry_run=True,
         )
         record_audit_event(
             session=session,
@@ -765,5 +775,56 @@ def export_caddy_mitigations() -> PlainTextResponse:
         media_type="text/plain",
         headers={
             "Content-Disposition": "attachment; filename=Caddyfile_sentrix.snippet"
+        },
+    )
+
+
+@router.get(
+    "/mitigations/export/aws-waf",
+    summary="Export active defensive policies as AWS WAFv2 WebACL and IPSet bundle",
+)
+def export_aws_waf_mitigations(
+    ipset_name: str = Query(
+        "sentrix-mitigation-ipset", description="Target AWS WAFv2 IPSet name"
+    ),
+    ipset_arn: str | None = Query(
+        None, description="Optional WebACL reference IPSet ARN"
+    ),
+) -> dict[str, Any]:
+    """Generate AWS WAFv2 IPSet and WebACL Rule JSON configured for CloudFront scope in us-east-1."""
+    rules = defensive_engine.get_rules(include_expired=False)
+    ipset = export_aws_wafv2_ipset(rules, ipset_name=ipset_name)
+    target_arn = (
+        ipset_arn
+        or f"arn:aws:wafv2:us-east-1:000000000000:global/ipset/{ipset_name}/00000000-0000-0000-0000-000000000000"
+    )
+    webacl_rules = export_aws_wafv2_rules(rules, ipset_arn=target_arn)
+    return {
+        "provider": "aws_wafv2",
+        "scope": "CLOUDFRONT",
+        "region": "us-east-1",
+        "ipset": ipset,
+        "webacl_rules": webacl_rules,
+    }
+
+
+@router.get(
+    "/mitigations/export/aws-waf/cli",
+    response_class=PlainTextResponse,
+    summary="Export executable AWS CLI bash deployment script for AWS WAFv2",
+)
+def export_aws_waf_cli(
+    ipset_name: str = Query(
+        "sentrix-mitigation-ipset", description="Target AWS WAFv2 IPSet name"
+    ),
+) -> PlainTextResponse:
+    """Download executable bash script to create or update CloudFront IPSet via AWS CLI."""
+    rules = defensive_engine.get_rules(include_expired=False)
+    content = export_aws_wafv2_cli_script(rules, ipset_name=ipset_name)
+    return PlainTextResponse(
+        content=content,
+        media_type="text/x-sh",
+        headers={
+            "Content-Disposition": "attachment; filename=sentrix_aws_waf_deploy.sh"
         },
     )

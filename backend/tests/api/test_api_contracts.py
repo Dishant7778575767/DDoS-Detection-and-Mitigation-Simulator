@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from collections.abc import Generator
+
 """Unit tests covering all 14 PRD Section 7 API endpoint contracts directly."""
 
 from pathlib import Path
@@ -38,7 +42,7 @@ from app.storage.repositories import (
 
 
 @pytest.fixture
-def db_session(tmp_path: Path) -> Session:
+def db_session(tmp_path: Path) -> Generator[Session, None, None]:
     db_file = tmp_path / "test_api.db"
     engine = create_engine(f"sqlite:///{db_file}")
     Base.metadata.create_all(engine)

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ChevronLeft,
+  ChevronRight,
   Menu,
   Shield,
   XCircle,
@@ -19,6 +21,33 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Restore sidebar state from localStorage on mount
+  useEffect(() => {
+    setMounted(true);
+    try {
+      const saved = localStorage.getItem("sentrix_sidebar_collapsed");
+      if (saved !== null) {
+        setCollapsed(saved === "true");
+      }
+    } catch {
+      // localStorage may fail in restricted browser contexts
+    }
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("sentrix_sidebar_collapsed", String(next));
+      } catch {
+        // Ignore
+      }
+      return next;
+    });
+  };
 
   const fetchStatus = useCallback(() => api.getMitigationStatus(), []);
   const { data: shieldStatus, refresh: refreshShield } = usePolling(fetchStatus, 3000);
@@ -49,9 +78,24 @@ export function AppShell({ children }: AppShellProps) {
   const isShieldActive = Boolean(shieldStatus?.shield_active);
   const remainingSec = shieldStatus?.latest_mitigation?.remaining_seconds ?? 0;
 
+  // Determine active route (handling legacy aliases)
+  const isRouteActive = (routeHref: string) => {
+    if (pathname === routeHref) return true;
+    if (routeHref === "/traffic" && pathname === "/telemetry") return true;
+    if (routeHref === "/detection" && (pathname === "/threats" || pathname === "/alerts")) return true;
+    if (routeHref === "/protection" && pathname === "/mitigation") return true;
+    if (routeHref === "/health" && pathname === "/history") return true;
+    return false;
+  };
+
+  const sidebarWidth = mounted && collapsed ? "4.75rem" : "16.25rem";
+
   return (
-    <div className="app-shell">
-      {/* Top DevSecOps Header */}
+    <div
+      className="app-shell"
+      style={{ "--sidebar-width": sidebarWidth } as React.CSSProperties}
+    >
+      {/* Top Header */}
       <header className="app-header" role="banner">
         <div className="flex items-center gap-3">
           <button
@@ -59,7 +103,7 @@ export function AppShell({ children }: AppShellProps) {
             suppressHydrationWarning
             onClick={() => setMobileOpen(!mobileOpen)}
             className="lg:hidden p-2 rounded-lg bg-[#1F2937]/70 border border-gray-700/60 text-gray-400 hover:text-[#00FF9D] hover:border-[#00FF9D]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00FF9D] transition-colors"
-            aria-label="Toggle Navigation Drawer"
+            aria-label="Toggle Navigation Menu"
             aria-expanded={mobileOpen}
             aria-controls="mobile-navigation-drawer"
           >
@@ -77,8 +121,8 @@ export function AppShell({ children }: AppShellProps) {
               <span className="text-gray-100 font-bold tracking-widest text-lg font-mono flex items-center gap-2">
                 SENTRIX
               </span>
-              <span className="text-[11px] text-gray-400 font-mono leading-none">
-                Intelligent DDoS Detection & Defense Platform
+              <span className="text-[11px] text-gray-400 font-sans leading-none">
+                Traffic Protection & Attack Detection
               </span>
             </div>
           </Link>
@@ -87,7 +131,7 @@ export function AppShell({ children }: AppShellProps) {
         <div className="flex items-center gap-3">
           {/* Synchronized Defense Shield Global Pill */}
           <Link
-            href="/mitigation"
+            href="/protection"
             className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-mono transition-all border ${
               isShieldActive
                 ? "bg-[rgba(0,255,157,0.15)] border-[#00FF9D]/60 text-[#00FF9D] shadow-[0_0_14px_rgba(0,255,157,0.35)]"
@@ -109,39 +153,48 @@ export function AppShell({ children }: AppShellProps) {
       </header>
 
       {/* Desktop Sidebar */}
-      <nav aria-label="Main navigation" className="sidebar hidden lg:flex">
-        <div className="text-[10px] uppercase tracking-wider text-gray-400 font-mono px-3 mb-2 flex items-center justify-between">
-          <span>Control Plane</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#00FF9D] shadow-[0_0_8px_#00FF9D] animate-pulse" />
+      <nav
+        aria-label="Main navigation"
+        className={`sidebar hidden lg:flex ${collapsed ? "items-center px-2" : "px-3"}`}
+      >
+        <div className="w-full flex items-center justify-between text-[10px] uppercase tracking-wider text-gray-400 font-mono mb-2 px-1">
+          {!collapsed && <span>Control Menu</span>}
+          <span className="w-1.5 h-1.5 rounded-full bg-[#00FF9D] shadow-[0_0_8px_#00FF9D] animate-pulse mx-auto lg:mx-0" />
         </div>
-        <div className="space-y-1">
+
+        <div className="space-y-1 w-full">
           {NAV_ROUTES.map((route) => {
-            const active = pathname === route.href;
+            const active = isRouteActive(route.href);
             const Icon = route.icon;
             return (
               <Link
+                key={route.href}
                 aria-current={active ? "page" : undefined}
-                className={`sidebar-link flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                title={collapsed ? route.label : undefined}
+                className={`sidebar-link flex items-center gap-3 rounded-xl transition-all ${
+                  collapsed ? "justify-center p-3" : "justify-between px-3 py-2.5"
+                } ${
                   active
                     ? "bg-[#00FF9D]/10 border-l-2 border-l-[#00FF9D] border-y border-r border-[#00FF9D]/30 text-[#00FF9D] shadow-[0_0_20px_rgba(0,255,157,0.15)]"
                     : "text-gray-400 hover:bg-[#1F2937]/60 hover:text-gray-100 border border-transparent"
                 }`}
                 href={route.href}
-                key={route.href}
               >
-                <div className="flex items-center gap-3">
+                <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
                   <Icon className={`w-4 h-4 shrink-0 ${active ? "text-[#00FF9D]" : "text-gray-400"}`} />
-                  <div className="flex flex-col text-left">
-                    <span className="text-xs font-semibold leading-tight font-sans">{route.label}</span>
-                    <span className="text-[10px] text-gray-400/80 font-mono leading-tight">
-                      {route.sublabel}
-                    </span>
-                  </div>
+                  {!collapsed && (
+                    <div className="flex flex-col text-left">
+                      <span className="text-xs font-semibold leading-tight font-sans">{route.label}</span>
+                      <span className="text-[10px] text-gray-400/80 font-mono leading-tight">
+                        {route.sublabel}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {route.badge && (
+                {!collapsed && route.badge && (
                   <span
-                    className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold border ${
+                    className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded font-bold border shrink-0 ${
                       route.badge === "Live"
                         ? "bg-[#00FF9D]/15 text-[#00FF9D] border-[#00FF9D]/40"
                         : "bg-[#06B6D4]/15 text-[#06B6D4] border-[#06B6D4]/40"
@@ -153,6 +206,26 @@ export function AppShell({ children }: AppShellProps) {
               </Link>
             );
           })}
+        </div>
+
+        {/* Sidebar Collapse Toggle Button */}
+        <div className="mt-auto pt-4 w-full border-t border-gray-800">
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-[#1F2937]/40 hover:bg-[#1F2937] border border-gray-700/50 text-gray-400 hover:text-[#00FF9D] text-xs font-mono transition-colors"
+          >
+            {collapsed ? (
+              <ChevronRight className="w-4 h-4" />
+            ) : (
+              <>
+                <ChevronLeft className="w-4 h-4" />
+                <span>Collapse Menu</span>
+              </>
+            )}
+          </button>
         </div>
       </nav>
 
@@ -188,7 +261,7 @@ export function AppShell({ children }: AppShellProps) {
 
             <nav aria-label="Mobile Navigation Links" className="space-y-1 overflow-y-auto">
               {NAV_ROUTES.map((route) => {
-                const active = pathname === route.href;
+                const active = isRouteActive(route.href);
                 const Icon = route.icon;
                 return (
                   <Link

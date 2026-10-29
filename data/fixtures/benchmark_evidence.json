@@ -1,20 +1,20 @@
 {
-  "timestamp": "2026-10-29T08:47:36Z",
+  "timestamp": "2026-10-29T16:18:28Z",
   "inference_latency_ms": {
     "prd_target": "< 10.0ms",
-    "mean": 3.13,
-    "p50": 3.075,
-    "p95": 3.434,
-    "p99": 4.591,
+    "mean": 3.198,
+    "p50": 3.201,
+    "p95": 3.624,
+    "p99": 3.78,
     "target_met": true
   },
   "pipeline_throughput": {
     "prd_target": ">= 1000 flows/sec (batch) / real-time bounded",
-    "measured_flows_per_sec": 15.7
+    "measured_flows_per_sec": 8.2
   },
   "memory_overhead_mb": {
     "prd_target": "< 512.0MB",
-    "measured_peak_mb": 0.562,
+    "measured_peak_mb": 0.582,
     "target_met": true
   }
 }

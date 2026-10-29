@@ -83,8 +83,9 @@ main:focus-visible {
 .app-shell {
   display: grid;
   min-height: 100vh;
-  grid-template-columns: 16rem minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 16.25rem) minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
+  transition: grid-template-columns 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (max-width: 1024px) {
