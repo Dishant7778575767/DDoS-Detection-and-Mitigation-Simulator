@@ -137,7 +137,9 @@ def test_issue_2_background_clock_worker_persists_simulation(
     initial_tick = run.current_tick
 
     # Let the background worker step
-    simulation_clock_worker._session_factory = lambda: db_session
+    engine = db_session.get_bind()
+    worker_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    simulation_clock_worker._session_factory = worker_factory
     simulation_clock_worker.start()
     simulation_clock_worker.wake()
 

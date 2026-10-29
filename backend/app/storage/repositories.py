@@ -538,11 +538,7 @@ class SimulationRunRepository:
         )
         self.session.add(run)
         self.session.commit()
-        if run in self.session:
-            try:
-                self.session.refresh(run)
-            except Exception:
-                pass
+        self.session.refresh(run)
         return run
 
     def get_run(self, run_id: str) -> SimulationRunModel | None:
@@ -584,11 +580,7 @@ class SimulationRunRepository:
         if completed_at is not None:
             run.completed_at = completed_at
         self.session.commit()
-        if run in self.session:
-            try:
-                self.session.refresh(run)
-            except Exception:
-                pass
+        self.session.refresh(run)
         return run
 
     def update_run_tick(self, run_id: str, tick: int) -> None:
