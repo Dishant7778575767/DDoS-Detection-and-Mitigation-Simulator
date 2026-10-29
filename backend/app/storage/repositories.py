@@ -776,6 +776,19 @@ class KinesisCheckpointRepository:
         self.session.refresh(record)
         return record
 
+    def delete_checkpoint(self, stream_name: str, shard_id: str) -> bool:
+        """Delete checkpoint for a given stream shard."""
+        stmt = select(KinesisCheckpointModel).where(
+            KinesisCheckpointModel.stream_name == stream_name,
+            KinesisCheckpointModel.shard_id == shard_id,
+        )
+        record = self.session.scalars(stmt).first()
+        if record is not None:
+            self.session.delete(record)
+            self.session.commit()
+            return True
+        return False
+
     def list_checkpoints(self, stream_name: str) -> list[KinesisCheckpointModel]:
         """List all shard checkpoints for a stream."""
         stmt = (

@@ -189,6 +189,57 @@ def test_kinesis_consumer_mock_ingest(tmp_path, monkeypatch) -> None:
     assert counts_dups["duplicate"] == 2
     assert counts_dups["poison"] == 1
 
+    # Verify mock_ingest does NOT write fake sequence checkpoints into the DB
+    with consumer.get_session() as session:
+        from app.storage.repositories import KinesisCheckpointRepository
+        ckpt = KinesisCheckpointRepository(session).get_checkpoint(
+            consumer.stream_name, "shardId-000000000000"
+        )
+        assert ckpt is None
+
+
+def test_kinesis_consumer_invalid_checkpoint_recovery(tmp_path, monkeypatch) -> None:
+    db_file = tmp_path / "kinesis_recovery_test.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file}")
+    get_settings.cache_clear()
+
+    from app.storage.database import Base, create_database_engine
+    from app.storage.repositories import KinesisCheckpointRepository
+    from app.aws.kinesis_consumer import CloudFrontKinesisConsumer, ShardState
+
+    engine = create_database_engine(f"sqlite:///{db_file}")
+    Base.metadata.create_all(bind=engine)
+
+    session_factory = get_session_factory()
+    with session_factory() as session:
+        ckpt_repo = KinesisCheckpointRepository(session)
+        # Seed an invalid mock sequence number
+        ckpt_repo.update_checkpoint(
+            "sentrix-cloudfront-realtime-logs",
+            "shardId-000000000000",
+            "mock-seq-1793287523-000006",
+        )
+
+    mock_boto = MagicMock()
+    mock_boto.get_shard_iterator.return_value = {"ShardIterator": "valid-iterator-123"}
+    consumer = CloudFrontKinesisConsumer(boto_client=mock_boto)
+    shard = ShardState("shardId-000000000000")
+
+    with session_factory() as session:
+        it = consumer._get_or_init_shard_iterator(shard, session)
+        assert it == "valid-iterator-123"
+
+        # Check that it did NOT call AFTER_SEQUENCE_NUMBER with mock-seq
+        call_kwargs = mock_boto.get_shard_iterator.call_args[1]
+        assert call_kwargs["ShardIteratorType"] == "LATEST"
+        assert "StartingSequenceNumber" not in call_kwargs
+
+        # Check that the invalid checkpoint was purged from DB
+        purged = KinesisCheckpointRepository(session).get_checkpoint(
+            "sentrix-cloudfront-realtime-logs", "shardId-000000000000"
+        )
+        assert purged is None
+
 
 def test_kinesis_consumer_missing_credentials_handling() -> None:
     mock_boto = MagicMock()

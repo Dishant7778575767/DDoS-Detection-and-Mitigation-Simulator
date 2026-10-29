@@ -9,6 +9,7 @@ SENTRIX sliding-window telemetry aggregator.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -31,6 +32,10 @@ from app.storage.repositories import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# AWS Kinesis sequence numbers must satisfy regular expression pattern: ^(0|([1-9]\d{0,128}))$
+AWS_SEQUENCE_NUMBER_REGEX = re.compile(r"^(0|([1-9]\d{0,128}))$")
 
 
 def _utc_now_iso() -> str:
@@ -189,15 +194,29 @@ class CloudFrontKinesisConsumer:
             "ShardId": shard.shard_id,
         }
 
+        use_checkpoint = False
         if last_seq:
-            params["ShardIteratorType"] = "AFTER_SEQUENCE_NUMBER"
-            params["StartingSequenceNumber"] = last_seq
-            logger.info(
-                "Resuming shard %s from sequence number %s",
-                shard.shard_id,
-                last_seq,
-            )
-        else:
+            if AWS_SEQUENCE_NUMBER_REGEX.match(str(last_seq)):
+                use_checkpoint = True
+                params["ShardIteratorType"] = "AFTER_SEQUENCE_NUMBER"
+                params["StartingSequenceNumber"] = str(last_seq)
+                logger.info(
+                    "Resuming shard %s from sequence number %s",
+                    shard.shard_id,
+                    last_seq,
+                )
+            else:
+                logger.warning(
+                    "Non-numeric checkpoint '%s' detected for shard %s on stream %s. Clearing invalid checkpoint and falling back to %s.",
+                    last_seq,
+                    shard.shard_id,
+                    self.stream_name,
+                    self.default_iterator_type,
+                )
+                ckpt_repo.delete_checkpoint(self.stream_name, shard.shard_id)
+                shard.last_sequence_number = None
+
+        if not use_checkpoint:
             params["ShardIteratorType"] = self.default_iterator_type
             logger.info(
                 "Starting shard %s from configured default %s",
@@ -209,7 +228,45 @@ class CloudFrontKinesisConsumer:
             resp = client.get_shard_iterator(**params)
             shard.shard_iterator = resp.get("ShardIterator")
             return shard.shard_iterator
-        except (ClientError, BotoCoreError) as exc:
+        except ClientError as exc:
+            err_code = exc.response.get("Error", {}).get("Code", "Unknown")
+            if use_checkpoint and err_code in (
+                "InvalidArgumentException",
+                "ValidationException",
+                "ResourceNotFoundException",
+            ):
+                logger.warning(
+                    "Shard iterator error (%s) resuming from checkpoint %s for shard %s: %s. Falling back to default %s iterator.",
+                    err_code,
+                    last_seq,
+                    shard.shard_id,
+                    exc,
+                    self.default_iterator_type,
+                )
+                ckpt_repo.delete_checkpoint(self.stream_name, shard.shard_id)
+                shard.last_sequence_number = None
+                fallback_params: dict[str, Any] = {
+                    "StreamName": self.stream_name,
+                    "ShardId": shard.shard_id,
+                    "ShardIteratorType": self.default_iterator_type,
+                }
+                try:
+                    resp = client.get_shard_iterator(**fallback_params)
+                    shard.shard_iterator = resp.get("ShardIterator")
+                    return shard.shard_iterator
+                except (ClientError, BotoCoreError) as fallback_exc:
+                    logger.warning(
+                        "Fallback shard iterator also failed for %s: %s",
+                        shard.shard_id,
+                        fallback_exc,
+                    )
+                    return None
+
+            logger.warning(
+                "Could not obtain shard iterator for %s: %s", shard.shard_id, exc
+            )
+            return None
+        except BotoCoreError as exc:
             logger.warning(
                 "Could not obtain shard iterator for %s: %s", shard.shard_id, exc
             )
@@ -299,7 +356,11 @@ class CloudFrontKinesisConsumer:
         return counts
 
     def process_kinesis_records(
-        self, records: list[dict[str, Any]], shard: ShardState, session: Any
+        self,
+        records: list[dict[str, Any]],
+        shard: ShardState,
+        session: Any,
+        update_checkpoint: bool = True,
     ) -> tuple[int, int, int]:
         """Decode, parse, deduplicate, and ingest a batch of Kinesis records."""
         raw_lines: list[tuple[str, str]] = []  # (raw_line, sequence_number)
@@ -365,16 +426,18 @@ class CloudFrontKinesisConsumer:
             telemetry_aggregator.add_items(accepted_items)
 
         # Update shard checkpoint with highest sequence number from this batch
-        last_seq = records[-1].get("SequenceNumber")
-        if last_seq:
-            ckpt_repo = KinesisCheckpointRepository(session)
-            ckpt_repo.update_checkpoint(
-                self.stream_name,
-                shard.shard_id,
-                str(last_seq),
-                records_processed_delta=len(accepted_items),
-            )
-            shard.last_sequence_number = str(last_seq)
+        last_seq = records[-1].get("SequenceNumber") if records else None
+        if last_seq and update_checkpoint:
+            seq_str = str(last_seq)
+            if AWS_SEQUENCE_NUMBER_REGEX.match(seq_str):
+                ckpt_repo = KinesisCheckpointRepository(session)
+                ckpt_repo.update_checkpoint(
+                    self.stream_name,
+                    shard.shard_id,
+                    seq_str,
+                    records_processed_delta=len(accepted_items),
+                )
+            shard.last_sequence_number = seq_str
             shard.records_processed += len(accepted_items)
 
         return len(accepted_items), duplicate_count, poison_count
@@ -402,7 +465,7 @@ class CloudFrontKinesisConsumer:
 
             shard = ShardState(shard_id)
             accepted, dups, poisons = self.process_kinesis_records(
-                mock_records, shard, session
+                mock_records, shard, session, update_checkpoint=False
             )
             counts["accepted"] = accepted
             counts["duplicate"] = dups
