@@ -1,5 +1,7 @@
 """Unit tests for detection model loading and flow inference."""
 
+from pathlib import Path
+
 import pytest
 
 from app.detection.model_loader import ModelNotFoundError, load_runtime_model
@@ -10,6 +12,7 @@ from app.features.definitions import FEATURE_NAMES, FEATURE_SCHEMA_VERSION
 
 def test_model_loader_finds_approved_artifact() -> None:
     """Ensure the approved model artifact from Phase 2 loads and matches schema."""
+    load_runtime_model.cache_clear()
     model = load_runtime_model()
     assert model is not None
     assert hasattr(model, "predict")
@@ -17,8 +20,20 @@ def test_model_loader_finds_approved_artifact() -> None:
         assert model.n_features_in_ == len(FEATURE_NAMES)
 
 
+def test_model_loader_cwd_independence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Ensure load_runtime_model succeeds regardless of process working directory."""
+    monkeypatch.chdir(tmp_path)
+    load_runtime_model.cache_clear()
+    model = load_runtime_model()
+    assert model is not None
+    assert hasattr(model, "predict")
+
+
 def test_model_loader_missing_raises_error() -> None:
     """Ensure a non-existent path raises ModelNotFoundError."""
+    load_runtime_model.cache_clear()
     with pytest.raises(ModelNotFoundError):
         load_runtime_model("models/non_existent_model.joblib")
 

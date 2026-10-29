@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-
 import { AlertDetailsModal } from "@/components/alerts/AlertDetailsModal";
 import { AlertsTable } from "@/components/alerts/AlertsTable";
 import { TrafficAreaChart } from "@/components/charts/TrafficAreaChart";
@@ -32,6 +31,7 @@ import {
   type SimulationTickItem,
   type TrafficSummaryResponse,
 } from "@/lib/api";
+import { formatISTTime } from "@/lib/formatters";
 import { usePolling } from "@/lib/polling";
 
 interface LatestSimData {
@@ -59,7 +59,10 @@ export default function OverviewPage() {
       }
     } catch (err: unknown) {
       if (process.env.NODE_ENV === "development") {
-        console.warn("Overview: latest simulation stream offline or pending:", err instanceof Error ? err.message : err);
+        console.warn(
+          "Overview: latest simulation stream offline or pending:",
+          err instanceof Error ? err.message : err
+        );
       }
     }
     return null;
@@ -85,10 +88,11 @@ export default function OverviewPage() {
     refresh: refreshSim,
   } = usePolling<LatestSimData | null>(fetchLatestSimulation, 2500);
 
+  const fetchShieldStatus = useCallback(() => api.getMitigationStatus(), []);
   const {
     data: shieldStatus,
     refresh: refreshShield,
-  } = usePolling(api.getMitigationStatus, 2000);
+  } = usePolling(fetchShieldStatus, 2500);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isActivatingShield, setIsActivatingShield] = useState(false);
@@ -113,11 +117,7 @@ export default function OverviewPage() {
         refreshSim(),
         refreshShield(),
       ]);
-      const timeStr = new Date().toLocaleTimeString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        hour12: false,
-      });
-      setLastCheckMessage(`Telemetry fresh at ${timeStr} IST`);
+      setLastCheckMessage(`Telemetry fresh at ${formatISTTime(new Date())} IST`);
       setTimeout(() => setLastCheckMessage(null), 3000);
     } catch (err) {
       console.error("Refresh error:", err);
@@ -152,7 +152,6 @@ export default function OverviewPage() {
   const handleCancelShield = async () => {
     const mitigation = shieldStatus?.latest_mitigation;
     try {
-      // 1. If linked to an active simulation, cancel the running simulation
       if (mitigation?.source === "simulation_run" && mitigation.run_id) {
         try {
           await api.controlSimulation(mitigation.run_id, "cancel");
@@ -167,7 +166,6 @@ export default function OverviewPage() {
         }
       }
 
-      // 2. Cancel the specific mitigation action if action_id exists
       const actionToCancel = mitigation?.action_id;
       if (actionToCancel) {
         try {
@@ -177,7 +175,6 @@ export default function OverviewPage() {
         }
       }
 
-      // 3. Notify dashboard and refresh state
       window.dispatchEvent(new CustomEvent("sentrix:shield_update"));
       await Promise.all([refreshShield(), refreshSim()]);
       setLastCheckMessage("Defense Shield cancelled");
@@ -186,6 +183,7 @@ export default function OverviewPage() {
       console.error("Shield cancellation error:", err);
     }
   };
+
   const simTicks = useMemo(() => simData?.ticks || [], [simData?.ticks]);
   const latestSimTick = simTicks.length > 0 ? simTicks[simTicks.length - 1] : null;
 
@@ -203,7 +201,7 @@ export default function OverviewPage() {
       ? Math.round(trafficData.packet_rate)
       : 0;
 
-  // Attack detection triggers:
+  // Attack detection triggers
   const isSimAttack = Boolean(isSimRunning && latestSimTick && latestSimTick.offered_attack_pps > 0);
   const hasActiveAlert = alertsData?.alerts?.some((a) => a.status === "active") ?? false;
   const isAttackActive = isSimAttack || hasActiveAlert;
@@ -227,22 +225,13 @@ export default function OverviewPage() {
 
   // Chart telemetry points
   const chartPoints = useMemo(() => {
-    const formatIST = (d: Date) =>
-      d.toLocaleTimeString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        hour12: false,
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-
     if (isSimRunning && simTicks && simTicks.length > 0) {
       return simTicks.map((t) => {
         const aPps = Math.round(t.offered_attack_pps);
         const nPps = Math.round(t.offered_legit_pps);
         const totalPps = aPps + nPps;
         return {
-          time: formatIST(new Date(t.timestamp)),
+          time: formatISTTime(t.timestamp),
           pps: totalPps,
           attack_pps: aPps,
           normal_pps: nPps,
@@ -266,18 +255,18 @@ export default function OverviewPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-[rgba(75,85,99,0.3)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b border-gray-800">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-100 flex items-center gap-3">
             <Activity className="w-7 h-7 text-[#00FF9D]" />
             Traffic & Detection Overview
           </h1>
-          <p className="text-xs text-[#9CA3AF] mt-1">
+          <p className="text-xs text-gray-400 mt-1">
             Flow telemetry and synthetic simulation results. This dashboard does not monitor live network interfaces.
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <StatusIndicator status={statusType} />
           {lastCheckMessage && (
             <span className="text-[11px] font-mono text-[#00FF9D] bg-[rgba(0,255,157,0.12)] border border-[#00FF9D]/40 px-2.5 py-1 rounded-md animate-pulse">
@@ -285,8 +274,8 @@ export default function OverviewPage() {
             </span>
           )}
           {lastUpdated && !lastCheckMessage && (
-            <span className="text-xs text-[#9CA3AF] font-mono">
-              Last checked: {lastUpdated.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: false })} IST
+            <span className="text-xs text-gray-400 font-mono">
+              Last checked: {formatISTTime(lastUpdated)} IST
             </span>
           )}
           <Button
@@ -304,7 +293,7 @@ export default function OverviewPage() {
 
       {/* Disconnection Warning */}
       {trafficError && (
-        <div className="p-4 rounded-xl border border-red-500/40 bg-[rgba(239,68,68,0.15)] text-[#EF4444] flex items-center gap-3 text-sm font-mono">
+        <div className="p-4 rounded-xl border border-red-500/40 bg-red-500/15 text-[#EF4444] flex items-center gap-3 text-sm font-mono">
           <AlertTriangle className="w-5 h-5 text-[#EF4444] shrink-0" />
           <span>
             Backend is offline. Please run: <code className="text-white bg-black/40 px-2 py-0.5 rounded">uvicorn backend.app.main:app --port 8000</code> in terminal.
@@ -312,36 +301,36 @@ export default function OverviewPage() {
         </div>
       )}
 
-      {/* BIG PROMINENT AI CLASSIFIER BOX - PERFECT FOR HR/RECRUITER DEMO */}
+      {/* Prominent AI Classifier Banner */}
       <div className={`p-6 rounded-2xl border-2 transition-all shadow-2xl ${
         isShieldActive
-          ? "bg-linear-to-r from-[rgba(0,255,157,0.2)] via-[rgba(31,41,55,0.9)] to-[rgba(9,13,22,0.95)] border-[#00FF9D] shadow-[0_0_35px_rgba(0,255,157,0.3)]"
+          ? "bg-linear-to-r from-[rgba(0,255,157,0.2)] via-[#1F2937]/90 to-[#090D16]/95 border-[#00FF9D] shadow-[0_0_35px_rgba(0,255,157,0.3)]"
           : isAttackActive
-          ? "bg-linear-to-r from-[rgba(239,68,68,0.25)] via-[rgba(31,41,55,0.9)] to-[rgba(9,13,22,0.95)] border-[#EF4444] shadow-[0_0_35px_rgba(239,68,68,0.3)]"
-          : "bg-linear-to-r from-[rgba(0,255,157,0.15)] via-[rgba(31,41,55,0.9)] to-[rgba(9,13,22,0.95)] border-[#00FF9D] shadow-[0_0_30px_rgba(0,255,157,0.2)]"
+          ? "bg-linear-to-r from-red-500/25 via-[#1F2937]/90 to-[#090D16]/95 border-[#EF4444] shadow-[0_0_35px_rgba(239,68,68,0.3)]"
+          : "bg-linear-to-r from-[rgba(0,255,157,0.15)] via-[#1F2937]/90 to-[#090D16]/95 border-[#00FF9D] shadow-[0_0_30px_rgba(0,255,157,0.2)]"
       }`}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-mono uppercase tracking-widest text-[#9CA3AF]">
+              <span className="text-xs font-mono uppercase tracking-widest text-gray-400">
                 Current Detection State:
               </span>
               <span className={`w-3 h-3 rounded-full ${isShieldActive ? "bg-[#00FF9D] animate-pulse" : isAttackActive ? "bg-[#EF4444] animate-ping" : "bg-[#00FF9D]"}`} />
             </div>
 
             <div className="flex items-center gap-4">
-              <div className={`text-3xl sm:text-4xl font-extrabold tracking-tight font-mono ${
+              <div className={`text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight font-mono ${
                 isShieldActive ? "text-[#00FF9D]" : isAttackActive ? "text-[#EF4444]" : "text-[#00FF9D]"
               }`}>
                 {isShieldActive
-                  ? "🛡️ DEFENSE SHIELD ACTIVE (RATE-LIMITED)"
+                  ? "DEFENSE SHIELD ACTIVE (RATE-LIMITED)"
                   : isAttackActive
-                  ? "⚠️ THREAT SIGNAL PRESENT"
-                  : "✅ NO ACTIVE THREAT ALERT"}
+                  ? "THREAT SIGNAL PRESENT"
+                  : "NO ACTIVE THREAT ALERT"}
               </div>
             </div>
 
-            <p className="text-sm text-gray-200 max-w-2xl leading-relaxed">
+            <p className="text-sm text-gray-300 max-w-2xl leading-relaxed">
               {isShieldActive
                 ? `Defense Shield is actively rate-limiting malicious flows to ${activeMitigation?.rate_limit_pps?.toLocaleString() || "5,000"} PPS on ${activeMitigation?.target_ip || "target node"}. Collateral damage is near 0%.`
                 : isAttackActive
@@ -391,8 +380,8 @@ export default function OverviewPage() {
                 Activate Defense Shield →
               </Button>
             ) : (
-              <div className="px-4 py-2 rounded-xl bg-[#090D16] border border-[rgba(75,85,99,0.4)] text-right">
-                <div className="text-[11px] text-[#9CA3AF] uppercase font-mono">Mitigation Mode</div>
+              <div className="px-4 py-2 rounded-xl bg-[#090D16] border border-gray-700/60 text-right">
+                <div className="text-[11px] text-gray-400 uppercase font-mono">Mitigation Mode</div>
                 <div className="text-lg font-bold text-[#00FF9D] font-mono">Simulation only</div>
               </div>
             )}
@@ -405,7 +394,7 @@ export default function OverviewPage() {
         </div>
       </div>
 
-      {/* Easy KPI Cards */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Total Speed */}
         <MetricCard
@@ -470,7 +459,7 @@ export default function OverviewPage() {
 
       {/* Main Realtime Chart */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <CardTitle className="flex items-center gap-2">
               <Activity className="w-5 h-5 text-[#00FF9D]" />
@@ -482,7 +471,7 @@ export default function OverviewPage() {
                 : "No historical series is provided by the current traffic summary API."}
             </CardDescription>
           </div>
-          <div className="flex items-center gap-4 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-4 text-xs font-mono">
             {isSimRunning && (
               <>
                 <span className="flex items-center gap-1.5 text-[#00FF9D]">
@@ -504,7 +493,7 @@ export default function OverviewPage() {
 
       {/* Recent Alerts Feed Table */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <CardTitle>Recent Attack Warnings & Incidents</CardTitle>
             <CardDescription>
@@ -513,7 +502,7 @@ export default function OverviewPage() {
           </div>
           <Link href="/alerts">
             <Button variant="ghost" size="sm">
-              See All Incidents  →
+              See All Incidents →
             </Button>
           </Link>
         </CardHeader>
@@ -525,7 +514,7 @@ export default function OverviewPage() {
         </CardContent>
       </Card>
 
-      {/* Interactive CVE & Threat Modal Drawer */}
+      {/* Interactive Threat Modal */}
       <AlertDetailsModal
         alert={selectedAlert}
         onClose={() => setSelectedAlert(null)}

@@ -47,7 +47,7 @@ def _error_response(
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def handle_http_error(request: Request, exc: HTTPException) -> JSONResponse:
-        errors: dict[int, tuple[str, str]] = {
+        default_errors: dict[int, tuple[str, str]] = {
             status.HTTP_400_BAD_REQUEST: ("INVALID_REQUEST", "Invalid request."),
             status.HTTP_401_UNAUTHORIZED: ("UNAUTHORIZED", "Authentication required."),
             status.HTTP_403_FORBIDDEN: ("FORBIDDEN", "Access denied."),
@@ -65,23 +65,35 @@ def install_error_handlers(app: FastAPI) -> None:
                 "Too many requests.",
             ),
         }
-        code, message = errors.get(
+        code, default_msg = default_errors.get(
             exc.status_code,
             ("HTTP_ERROR", "Request could not be completed."),
         )
+        # Preserve specific endpoint exception detail if provided, fallback to default message
+        message = str(exc.detail) if exc.detail else default_msg
         return _error_response(
             request, exc.status_code, code, message, headers=exc.headers
         )
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(
-        request: Request, _: RequestValidationError
+        request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        # Provide human-readable field errors
+        field_errors = []
+        for error in exc.errors():
+            loc = " -> ".join(str(l) for l in error.get("loc", []))
+            msg = error.get("msg", "invalid")
+            field_errors.append(f"{loc}: {msg}")
+        readable_msg = (
+            "; ".join(field_errors) if field_errors else "Request validation failed."
+        )
+
         return _error_response(
             request,
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             "VALIDATION_ERROR",
-            "Request validation failed.",
+            readable_msg,
         )
 
     @app.exception_handler(Exception)

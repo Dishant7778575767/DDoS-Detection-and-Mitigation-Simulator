@@ -11,6 +11,7 @@ import {
   Shield,
 } from "@/components/ui/icons";
 import { api } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 import type { AlertItem } from "@/types";
 
 interface AlertDetailsModalProps {
@@ -30,21 +31,26 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
   const isHigh = rawSev === "high" || rawSev === "warning";
   const isMedium = rawSev === "medium";
 
-  // Friendly threat explanation for non-tech / recruiter
-  let threatExplanation = "Anomalous traffic spike detected. The AI brain observed traffic patterns exceeding safety thresholds.";
+  // Friendly threat explanation
+  let threatExplanation =
+    "Anomalous traffic spike detected. The AI brain observed traffic patterns exceeding safety thresholds.";
   let actionSuggestion = "Monitor connection rates and apply rate limiting if traffic worsens.";
 
   if (alert.title?.includes("SYN")) {
-    threatExplanation = "Fake connection spam attack (SYN Flood). Attackers are opening millions of half-open TCP requests to exhaust memory.";
+    threatExplanation =
+      "Fake connection spam attack (SYN Flood). Attackers are opening millions of half-open TCP requests to exhaust memory.";
     actionSuggestion = "Block malicious IP & enforce TCP SYN Cookies.";
   } else if (alert.title?.includes("UDP")) {
-    threatExplanation = "High-bandwidth pipe clogging attack (UDP Flood). Random packets are saturating the network pipeline.";
+    threatExplanation =
+      "High-bandwidth pipe clogging attack (UDP Flood). Random packets are saturating the network pipeline.";
     actionSuggestion = "Drop unverified UDP packets at the ingress gateway.";
   } else if (alert.title?.includes("HTTP")) {
-    threatExplanation = "Website overload attack (HTTP Flood). A swarm of bots is spamming heavy web pages to crash the server.";
+    threatExplanation =
+      "Website overload attack (HTTP Flood). A swarm of bots is spamming heavy web pages to crash the server.";
     actionSuggestion = "Trigger challenge / rate limiting on repetitive GET requests.";
   } else if (alert.title?.includes("Slow")) {
-    threatExplanation = "Stealth slow connection attack (Slowloris). Tiny data fragments are sent very slowly to hold connection sockets open silently.";
+    threatExplanation =
+      "Stealth slow connection attack (Slowloris). Tiny data fragments are sent very slowly to hold connection sockets open silently.";
     actionSuggestion = "Terminate long-hanging connections with short keep-alive timeouts.";
   }
 
@@ -82,8 +88,7 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
         `Action verified! Rate limited to ${res.rate_limit_pps.toLocaleString()} PPS for ${res.duration_seconds}s on ${effectiveIp} (Safely executed in simulation mode with 0 downtime).`
       );
     } catch (err: unknown) {
-      const msg = err && typeof err === "object" && "message" in err ? String(err.message) : "Safety Gate rejected request.";
-      setSimulationError(msg);
+      setSimulationError(getErrorMessage(err, "Safety Gate rejected request."));
     } finally {
       setIsSimulating(false);
     }
@@ -95,10 +100,11 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
       onClose={onClose}
       title="Threat Investigation & Defense Action"
       description={`Target Server: ${alert.target_ip || "Under Inspection"}`}
+      variant={isCritical ? "danger" : "info"}
     >
       <div className="space-y-4 text-xs font-mono">
         {/* Simple Threat Summary Card */}
-        <div className="p-3.5 rounded-xl bg-[#090D16] border border-[rgba(75,85,99,0.4)] space-y-2">
+        <div className="p-3.5 rounded-xl bg-[#090D16] border border-gray-700/60 space-y-2">
           <div className="flex items-center justify-between gap-3">
             <span className="text-gray-100 font-bold text-sm truncate">
               {alert.title || "Traffic Anomaly"}
@@ -121,31 +127,31 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
               </Badge>
             </div>
           </div>
-          <p className="text-[11px] text-[#9CA3AF] font-sans leading-relaxed">
+          <p className="text-[11px] text-gray-400 font-sans leading-relaxed">
             {threatExplanation}
           </p>
         </div>
 
         {/* What AI Found & Recommended Action */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-sans">
-          <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)] space-y-1">
+          <div className="p-3 rounded-lg bg-[#090D16] border border-gray-700/50 space-y-1">
             <span className="text-[10px] font-mono text-[#06B6D4] font-bold block uppercase tracking-wider">
               Target Being Attacked:
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-gray-200 font-bold font-mono text-xs">{effectiveIp}</span>
               {isLoopbackOrProtected && (
-                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono">
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono">
                   Virtual Node
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-[#9CA3AF] block font-mono">
+            <span className="text-[10px] text-gray-400 block font-mono">
               Status: {alert.status === "active" ? "ACTIVE" : "RESOLVED"}
             </span>
           </div>
 
-          <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)] space-y-1">
+          <div className="p-3 rounded-lg bg-[#090D16] border border-gray-700/50 space-y-1">
             <span className="text-[10px] font-mono text-[#00FF9D] font-bold block uppercase tracking-wider">
               Recommended Fix:
             </span>
@@ -156,8 +162,8 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
         </div>
 
         {/* Safety Gate Guardrails Box */}
-        <div className="p-3 rounded-lg bg-[#090D16] border border-[rgba(75,85,99,0.3)] space-y-2">
-          <div className="text-[11px] font-bold text-gray-200 flex items-center justify-between border-b border-[rgba(75,85,99,0.3)] pb-1.5">
+        <div className="p-3 rounded-lg bg-[#090D16] border border-gray-700/50 space-y-2">
+          <div className="text-[11px] font-bold text-gray-200 flex items-center justify-between border-b border-gray-800 pb-1.5">
             <span className="flex items-center gap-1.5 font-mono">
               <Lock className="w-3.5 h-3.5 text-[#00FF9D]" />
               Automated Defense Shield Settings
@@ -165,30 +171,30 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
             <span className="text-[10px] text-[#00FF9D] font-mono">SAFE TEST MODE</span>
           </div>
           <div className="flex justify-between text-gray-300">
-            <span className="text-[#9CA3AF]">Protective Action:</span>
+            <span className="text-gray-400">Protective Action:</span>
             <span className="text-[#06B6D4] font-bold">Smart Rate-Limiting</span>
           </div>
           <div className="flex justify-between text-gray-300">
-            <span className="text-[#9CA3AF]">AI Detection Engine:</span>
+            <span className="text-gray-400">AI Detection Engine:</span>
             <span>Random Forest AI</span>
           </div>
           <div className="flex justify-between text-gray-300">
-            <span className="text-[#9CA3AF]">Target Safe Node:</span>
+            <span className="text-gray-400">Target Safe Node:</span>
             <span className="text-gray-200 font-mono">{effectiveIp}</span>
           </div>
           <div className="flex justify-between text-gray-300">
-            <span className="text-[#9CA3AF]">Allowed Safe Speed:</span>
+            <span className="text-gray-400">Allowed Safe Speed:</span>
             <span className="text-[#00FF9D] font-bold">5,000 PPS</span>
           </div>
           <div className="flex justify-between text-gray-300">
-            <span className="text-[#9CA3AF]">Rule Expiry:</span>
+            <span className="text-gray-400">Rule Expiry:</span>
             <span>60 seconds auto-reset</span>
           </div>
         </div>
 
         {/* Success Feedback */}
         {simulationResult && (
-          <div className="p-3 rounded-lg bg-[rgba(0,255,157,0.1)] border border-[#00FF9D]/40 text-[#00FF9D] flex items-start gap-2">
+          <div className="p-3 rounded-lg bg-[rgba(0,255,157,0.12)] border border-[#00FF9D]/40 text-[#00FF9D] flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 text-[#00FF9D] shrink-0 mt-0.5" />
             <span className="leading-relaxed font-sans">{simulationResult}</span>
           </div>
@@ -205,7 +211,7 @@ export function AlertDetailsModal({ alert, onClose }: AlertDetailsModalProps) {
           </div>
         )}
 
-        <div className="flex justify-end gap-3 pt-3 border-t border-[rgba(75,85,99,0.3)]">
+        <div className="flex justify-end gap-3 pt-3 border-t border-gray-800">
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>

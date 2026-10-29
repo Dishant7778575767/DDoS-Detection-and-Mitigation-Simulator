@@ -16,6 +16,7 @@ from app.api.v1.health import router as health_router
 from app.api.v1.mitigations import router as mitigations_router
 from app.api.v1.models import router as models_router
 from app.api.v1.simulations import router as simulations_router
+from app.api.v1.telemetry import router as telemetry_router
 from app.api.v1.traffic import router as traffic_router
 from app.core.config import get_settings, validate_runtime_settings
 from app.core.errors import install_error_handlers
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     # Register all Phase 3 API routers under /api/v1 prefix
     app.include_router(health_router, prefix="/api/v1")
     app.include_router(traffic_router, prefix="/api/v1")
+    app.include_router(telemetry_router, prefix="/api/v1")
     app.include_router(detection_router, prefix="/api/v1")
     app.include_router(models_router, prefix="/api/v1")
     app.include_router(alerts_router, prefix="/api/v1")

@@ -1,315 +1,228 @@
-# SENTRIX System Architecture & Design Specification
+# SENTRIX — System Architecture & Design Specification
 
-SENTRIX is an autonomous, machine-learning-driven DDoS detection and mitigation simulation platform. It combines trained flow-level AI classification model with volumetric threshold telemetry to protect web infrastructure without causing collateral damage to legitimate visitors.
+**System Name:** SENTRIX (Secure Enterprise Network Telemetry & Real-Time Incident X-Defend)  
+**Architecture Version:** 2.0.0  
+**Target Environment:** Real-World Web Infrastructures, Cloud Environments, and Cyber Ranges  
 
 ---
 
-## 1. High-Level System Architecture
+## 1. High-Level Architecture Overview
+
+SENTRIX is an autonomous, real-time DDoS detection, monitoring, and defensive mitigation platform. It combines live HTTP telemetry streaming, adaptive statistical anomaly baselining (EWMA), explainable multi-tier threat classification, and staged defensive mitigation enforcement to safeguard web applications from malicious denial-of-service campaigns without harming legitimate visitors.
 
 ```mermaid
 flowchart TD
-    subgraph Traffic_Layer["1. Ingress and Traffic Generation"]
-        Attacker["Malicious Botnet / Attacker"]
-        LegitUser["Genuine Web Visitors"]
-        ChaosEngine["Discrete-Event Chaos Generator"]
+    subgraph Traffic_Layer["1. Ingress & Telemetry Ingestion Tier"]
+        Clients["Web Visitors / Attackers"]
+        ReverseProxy["Reverse Proxy (Nginx / Caddy / Cloudflare)"]
+        ASGIMiddleware["Sentrix ASGI Middleware (FastAPI / Starlette)"]
+        IngressAPI["Telemetry Ingress API (/api/v1/telemetry/ingress)"]
+        LogParser["Log Parser (Combined, CLF, JSON)"]
+        PrivacyMasker["GDPR / Subnet Privacy Masker (/24, /48)"]
 
-        Attacker --> ChaosEngine
-        LegitUser --> ChaosEngine
+        Clients --> ReverseProxy
+        ReverseProxy --> IngressAPI
+        ASGIMiddleware --> IngressAPI
+        IngressAPI --> LogParser
+        LogParser --> PrivacyMasker
     end
 
-    subgraph Frontend_Layer["2. Next.js 16 Presentation Tier"]
-        UI_Overview["Overview Dashboard"]
-        UI_Simulator["Chaos Simulator"]
-        UI_Alerts["Alerts and Flow Inspection"]
-        UI_Mitigation["Mitigation Control Room"]
-        UI_Settings["Settings and Policy Matrix"]
-        UI_History["Audit History and CSV Export"]
+    subgraph Feature_Layer["2. Sliding-Window Aggregation & Feature Engine"]
+        CircBuffer["Circular Buffer (60s Retention)"]
+        PercentileCalc["Percentile Engine (p50, p90, p99 Latencies)"]
+        EntropyCalc["Shannon Entropy Calculator H(X) & Entropy Ratio η"]
+        Aggregator["TelemetryAggregator (Thread-Safe Deque)"]
+
+        PrivacyMasker --> Aggregator
+        Aggregator --> CircBuffer
+        CircBuffer --> PercentileCalc
+        CircBuffer --> EntropyCalc
     end
 
-    subgraph API_Gateway["3. FastAPI Control Plane"]
-        AuthMiddleware["Bearer Token Authentication"]
-        CORSMiddleware["CORS Security"]
-        RequestTracing["Request ID Tracing"]
-        ErrorEnvelope["Sanitized Error Handler"]
+    subgraph Detection_Layer["3. Multi-Tier Threat Detection Engine"]
+        EWMA["Adaptive Baseline Tracker (EWMA Mean μ_t, Moving Variance σ_t^2)"]
+        ZScore["Velocity Shift Engine (Z_rps, Z_err, Z_lat, Z_bps)"]
+        ThreatClassifier["Explainable Threat Classifier"]
+        FlashCrowdDiff{"Flash Crowd Differentiator"}
 
-        AuthMiddleware --> CORSMiddleware
-        CORSMiddleware --> RequestTracing
-        RequestTracing --> ErrorEnvelope
+        Aggregator --> EWMA
+        EWMA --> ZScore
+        ZScore --> ThreatClassifier
+        ThreatClassifier --> FlashCrowdDiff
     end
 
-    subgraph Core_Services["4. Detection and Mitigation Services"]
-        IngestionService["Ingestion and Schema Validation"]
-        FeatureEngine["Flow Feature Extraction"]
+    subgraph Defense_Layer["4. Defensive Mitigation & Policy Engine"]
+        DryRunEngine["Staged Dry-Run Mitigation Engine"]
+        RateLimiter["Leaky Bucket Rate Limiter"]
+        AllowlistGuard["Protected Infrastructure Allowlist Guard"]
+        TTLPruner["Automatic Rule TTL Pruning"]
+        ConfigExporter["Config Exporters (Nginx / Caddy / Cloudflare)"]
 
-        subgraph AI_Engine["ML Threat Inference Engine"]
-            RF_Model["Random Forest Classifier"]
-            InferenceScorer["Probability Scoring"]
-            RF_Model --> InferenceScorer
-        end
-
-        subgraph Policy_Layer["Dual-Signal Policy Consensus"]
-            ThresholdRepo["Dynamic Traffic Thresholds"]
-            DecisionMatrix["Hybrid Policy Decision Matrix"]
-            ThresholdRepo --> DecisionMatrix
-            InferenceScorer --> DecisionMatrix
-        end
-
-        subgraph Safety_Gate["Fail-Closed Safety Gate"]
-            AllowlistCheck["Protected Destination Allowlist"]
-            RateLimitBounds["Rate Limit Bounds"]
-            EmergencySwitch["Emergency Kill Switch"]
-
-            AllowlistCheck --> RateLimitBounds
-            RateLimitBounds --> EmergencySwitch
-        end
-
-        subgraph Simulation_Engine["Virtual Victim Simulation"]
-            VirtualVictim["Virtual Victim Queue Model"]
-            RateLimiter["Virtual Leaky-Bucket Rate Limiter"]
-            ScorecardGen["Scorecard and KPI Generator"]
-
-            RateLimiter --> VirtualVictim
-            VirtualVictim --> ScorecardGen
-        end
-
-        IngestionService --> FeatureEngine
-        FeatureEngine --> RF_Model
-        DecisionMatrix --> Safety_Gate
-        EmergencySwitch --> RateLimiter
+        FlashCrowdDiff -- "ATTACK DETECTED" --> DryRunEngine
+        FlashCrowdDiff -- "FLASH CROWD" --> AllowlistGuard
+        DryRunEngine --> RateLimiter
+        DryRunEngine --> TTLPruner
+        DryRunEngine --> ConfigExporter
     end
 
-    subgraph Storage_Tier["5. Storage Tier"]
-        DB_Router["Database Engine Router"]
-        PostgresDB["Supabase PostgreSQL"]
-        SQLiteDB["SQLite Local Database"]
+    subgraph Persistence_Layer["5. Relational Persistence & Audit Trail"]
+        DB[(SQLite / PostgreSQL Engine)]
+        AlertModel["AlertModel (Incidents)"]
+        AuditModel["AuditEventModel (Audit Trail)"]
+        RuleModel["MitigationRuleModel (Active Rules)"]
 
-        DB_Router --> PostgresDB
-        DB_Router --> SQLiteDB
+        FlashCrowdDiff --> AlertModel
+        DryRunEngine --> RuleModel
+        DryRunEngine --> AuditModel
+        AlertModel --> DB
+        AuditModel --> DB
+        RuleModel --> DB
     end
 
-    ChaosEngine --> IngestionService
-    Frontend_Layer <--> API_Gateway
-    API_Gateway --> IngestionService
-    ScorecardGen --> DB_Router
-    Core_Services --> DB_Router
+    subgraph Presentation_Layer["6. Next.js 16 Unified SOC Dashboard Tier"]
+        SOC_Overview["/overview (Live Traffic Pulse)"]
+        SOC_Telemetry["/telemetry (Live HTTP Telemetry)"]
+        SOC_Threats["/threats (Threat Center & Z-Scores)"]
+        SOC_Alerts["/alerts (Persistent Incidents)"]
+        SOC_Mitigation["/mitigation (Defensive Rules & Exporter)"]
+        SOC_Simulator["/simulator (Isolated Cyber Range Lab)"]
+        SOC_History["/history (Regulatory Audit Ledger)"]
+        SOC_Settings["/settings (Policy Matrix)"]
+
+        DB --> SOC_Alerts
+        DB --> SOC_History
+        DB --> SOC_Mitigation
+        EWMA --> SOC_Threats
+        Aggregator --> SOC_Telemetry
+        DryRunEngine --> SOC_Mitigation
+    end
 ```
 
 ---
 
-## 2. Component Interaction and Simulation Tick Sequence
+## 2. Ingestion & Sliding-Window Feature Pipeline
 
-The following sequence describes one virtual simulation tick, where the simulation interval is one second.
+The telemetry ingress pipeline accepts both pre-aggregated metric objects and raw server logs. 
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Operator as Security Operator
-    participant Simulator as Simulator Manager
-    participant Engine as Scenario Generator
-    participant AI as Random Forest Model
-    participant Policy as Hybrid Policy
-    participant Safety as Safety Gate
-    participant Victim as Virtual Victim
-    participant DB as PostgreSQL or SQLite
-    participant UI as Next.js Dashboard
+    actor Proxy as Nginx / Caddy / App
+    participant API as Ingress API (/ingress)
+    participant Parser as Log Parser & Masker
+    participant Agg as TelemetryAggregator
+    participant Deque as Thread-Safe Circular Deque
 
-    Operator->>Simulator: Trigger simulation tick
-    Simulator->>Engine: Generate flow features
-    Engine-->>Simulator: Return 14 flow features and ground truth
-
-    Simulator->>AI: Run flow inference
-    AI-->>Simulator: Return prediction and probability
-
-    Simulator->>Policy: Evaluate ML and volume signals
-    Note over Policy: ML threat signal AND volumetric threshold exceeded
-    Policy-->>Simulator: Return mitigation request or alert
-
-    Simulator->>Safety: Validate mitigation request
-    Note over Safety: Check protected destinations, rate bounds, duration, and emergency state
-    Safety-->>Simulator: Return approval or rejection
-
-    Simulator->>Victim: Evaluate traffic and active mitigations
-    Note over Victim: Apply virtual filtering and calculate service metrics
-    Victim-->>Simulator: Return availability, latency, and packet-drop metrics
-
-    Simulator->>DB: Persist tick, detection, audit, and mitigation records
-    Simulator-->>UI: Return simulation telemetry
-    UI->>UI: Update dashboard state
-    UI-->>Operator: Display current shield status
+    Proxy->>API: POST /api/v1/telemetry/ingress (Batch or Logs)
+    API->>Parser: Parse lines (Combined / CLF / JSON)
+    Parser->>Parser: Mask IP (/24 IPv4, /48 IPv6)
+    Parser-->>API: List[RequestTelemetryItem]
+    API->>Agg: record_batch(items)
+    Agg->>Deque: Acquire Lock & Append Items
+    Agg->>Deque: Evict items older than (now - 60s)
+    Agg->>Agg: Compute RPS, Throughput, Error Rates
+    Agg->>Agg: Compute Latency Percentiles (p50, p90, p99)
+    Agg->>Agg: Compute Shannon Entropy H(X) & Ratio η
+    Agg-->>API: Summary Cache Updated
+    API-->>Proxy: HTTP 202 Accepted {ingested: N}
 ```
+
+### Mathematical Definitions:
+1. **Shannon Entropy of Client Distribution:**
+   $$H(X) = -\sum_{i=1}^{n} P(x_i) \log_2 P(x_i)$$
+   Where $P(x_i) = \frac{\text{requests from IP } i}{\text{total requests in window}}$.
+2. **Normalized Entropy Ratio:**
+   $$\eta = \frac{H(X)}{\log_2(n)} \quad (\text{for } n > 1)$$
+   - $\eta \approx 0$: Concentrated traffic (single attacker or small cluster).
+   - $\eta \approx 1$: Uniformly dispersed traffic across diverse IP space (Flash Crowd or Distributed Botnet).
 
 ---
 
-## 3. Dual-Signal Hybrid Policy Decision Matrix
+## 3. Statistical Baseline & Multi-Tier Detection Engine
 
-SENTRIX requires both the ML threat signal and the volumetric threshold signal before requesting mitigation. A single signal produces an alert rather than automatically engaging the shield.
-
-```mermaid
-flowchart TD
-    Start["Flow Window Received"]
-
-    Start --> ML_Check{"ML Threat Probability >= 0.50?"}
-    Start --> Vol_Check{"PPS > 5000 OR BPS > 10 MB/s?"}
-
-    ML_Check -->|Yes| ML_Flag["ML Threat Signal Active"]
-    ML_Check -->|No| ML_Safe["ML Threat Signal Inactive"]
-
-    Vol_Check -->|Yes| Vol_Flag["Volume Signal Active"]
-    Vol_Check -->|No| Vol_Safe["Volume Signal Inactive"]
-
-    ML_Flag --> Consensus{"Both Signals Active?"}
-    ML_Safe --> Consensus
-    Vol_Flag --> Consensus
-    Vol_Safe --> Consensus
-
-    Consensus -->|Yes| Mitigation["REQUEST_MITIGATION"]
-    Consensus -->|No| SingleSignal{"Is Either Signal Active?"}
-
-    SingleSignal -->|Yes| Alert["ALERT"]
-    SingleSignal -->|No| Monitor["MONITOR"]
-
-    style Mitigation fill:#EF4444,stroke:#B91C1C,color:#FFFFFF
-    style Alert fill:#F59E0B,stroke:#D97706,color:#000000
-    style Monitor fill:#10B981,stroke:#059669,color:#FFFFFF
-```
-
----
-
-## 4. Virtual Victim Hardware Physics Model
-
-To avoid modifying physical host network interfaces (`iptables`, `netsh`, or operating system firewall rules), SENTRIX simulates victim-server degradation using a virtual queueing model.
+SENTRIX decouples anomaly detection from fixed static thresholds by tracking dynamic baseline behavior.
 
 ```mermaid
 flowchart LR
-    subgraph Traffic_Inflow["Traffic Inflow"]
-        OfferedAttack["Offered Attack Traffic"]
-        OfferedLegit["Offered Legitimate Users"]
+    Telemetry["Live Sliding-Window Metrics"] --> Tracker["Adaptive EWMA Tracker"]
+    
+    subgraph EWMA_Math["EWMA Mathematical State"]
+        Mean["Running Mean: μ_t = α·x_t + (1-α)·μ_{t-1}"]
+        Variance["Moving Variance: σ_t^2 = (1-α)·(σ_{t-1}^2 + α·(x_t - μ_{t-1})^2)"]
+        ZScore["Velocity Z-Scores: Z = (x - μ) / max(σ, ε)"]
+        Mean --> ZScore
+        Variance --> ZScore
     end
 
-    subgraph Defense_Shield["Defense Shield - Virtual Filter"]
-        RateLimiter["Leaky-Bucket Rate Limiter"]
+    Tracker --> EWMA_Math
+    ZScore --> Classifier["Explainable Threat Classifier"]
+
+    subgraph Classifier_Rules["Threat Evaluation Matrix"]
+        R1["Z_rps ≥ 3.0 & η ≤ 0.40 & Err ≥ 15% ➔ VOLUMETRIC_HTTP_FLOOD"]
+        R2["Z_lat ≥ 3.0 & Low RPS ➔ SLOWLORIS_EXHAUSTION"]
+        R3["Z_err ≥ 3.0 on /login ➔ CREDENTIAL_STUFFING"]
+        R4["Z_rps ≥ 2.0 & η ≥ 0.75 & Err < 10% ➔ FLASH_CROWD (ALLOW)"]
     end
 
-    subgraph Hardware_Pipes["Victim Hardware Constraints"]
-        BandwidthPipe["Bandwidth Capacity: 100 Mbps"]
-        CPUThroughput["CPU Processing Capacity: 5000 PPS"]
-        ConnTable["SYN Connection Table: 10000 Slots"]
-    end
-
-    subgraph Output_Metrics["Quality of Service Metrics"]
-        AvailMetric["Server Availability Percentage"]
-        LatencyMetric["P95 Latency in Milliseconds"]
-        PacketLoss["Packet Loss and Dropped Packets"]
-    end
-
-    OfferedAttack --> RateLimiter
-    OfferedLegit --> RateLimiter
-
-    RateLimiter --> BandwidthPipe
-    BandwidthPipe --> CPUThroughput
-    CPUThroughput --> ConnTable
-
-    ConnTable --> AvailMetric
-    ConnTable --> LatencyMetric
-    ConnTable --> PacketLoss
+    Classifier --> Classifier_Rules
+    Classifier_Rules --> Persistence["Persistent Incident & Audit Logging"]
 ```
 
-### 4.1 Simulation Constraints
+### Flash Crowd Differentiator:
+When traffic surges ($Z_{rps} \ge 2.0$), legacy systems often trigger blanket rate limits, damaging legitimate marketing spikes. SENTRIX differentiates flash crowds through:
+- **Entropy Ratio ($\eta \ge 0.75$):** Real humans arrive from varied geographic/ISP IP pools.
+- **Client Count ($n \ge 5$):** Multi-source traffic distribution.
+- **Error Rate ($< 10\%$):** Real users successfully access content with 200 OK responses.
+- **Action:** Tagged as `FLASH_CROWD`, action `ALLOW`, zero collateral damage.
 
-- **Bandwidth capacity:** Default 100 Mbps.
-- **CPU packet-processing capacity:** Default 5000 packets per second (PPS).
-- **SYN connection table:** Default 10000 concurrent connection slots.
-- **Virtual rate limiter:** Simulates traffic filtering without modifying host networking.
-- **Availability:** Calculated from the victim's simulated ability to serve legitimate traffic.
-- **Latency:** Estimated from queueing delay and resource saturation.
-- **Packet loss:** Includes attack traffic dropped by the virtual filter and legitimate traffic lost due to congestion or filtering.
+---
 
-The model must calculate packet drops, latency, and availability from actual simulation inputs. Values such as 95% attack drops or 2% collateral drops are configurable targets, not guaranteed outcomes.
+## 4. Defensive Mitigation Engine & Lifecycle
 
-### 4.2 Safety and Isolation
+Defensive rules follow a strict safety lifecycle to prevent operator error or self-inflicted outages.
 
-All resource limits belong to the virtual victim model. They must not be interpreted as measurements of the physical host's actual hardware capacity. SENTRIX must clearly label simulated metrics in its dashboard and reports.
+```mermaid
+stateDiagram-v2
+    [*] --> Proposed: Threat Detected / Analyst Proposal
+    
+    state Proposed {
+        [*] --> CheckAllowlist: Verify Target IP/CIDR
+        CheckAllowlist --> Reject: Target is Protected (127.0.0.1, 10.0.0.0/8)
+        CheckAllowlist --> StagedDryRun: Target is External
+    }
 
+    state StagedDryRun {
+        [*] --> SimulateEnforcement
+        SimulateEnforcement: Traffic is ALLOWED
+        SimulateEnforcement: simulated_blocked_count++
+        SimulateEnforcement: Measure potential false positives
+    }
 
-## 5. Security & Isolation Architecture
+    StagedDryRun --> Active: SOC Operator Approves Rule
+    StagedDryRun --> Revoked: SOC Operator Dismisses Rule
+    StagedDryRun --> Expired: Rule TTL Expires (auto-pruned)
 
-### 5.1 Host Isolation Invariance
+    state Active {
+        [*] --> EnforceLeakyBucket
+        EnforceLeakyBucket: Traffic is BLOCKED or RATE-LIMITED
+        EnforceLeakyBucket: active_blocked_count++
+    }
 
-- All mitigation actions operate entirely in application memory through virtual mitigation records.
-- No host operating system firewall rules, kernel modules, network interfaces, or physical packet-filtering mechanisms are modified.
-- The simulation engine must not execute privileged networking commands.
-- Simulation results must remain separate from real-world enforcement status.
+    Active --> Revoked: SOC Operator Revokes Rule
+    Active --> Expired: Rule TTL Expires (auto-pruned)
+    Active --> StagedDryRun: Emergency Kill-Switch Engaged
 
-### 5.2 Fail-Closed Safety Gate
+    Revoked --> [*]
+    Expired --> [*]
+```
 
-Every mitigation request must pass through `validate_safety_gate()` before a virtual mitigation is created.
+---
 
-If validation fails, the request must be rejected. If a required safety check cannot be completed, SENTRIX must not activate the mitigation.
+## 5. Security & Safety Invariants
 
-#### Protected Destination Allowlist
-
-Mitigation must be blocked for protected destination addresses, including:
-
-- IPv4 loopback range: `127.0.0.0/8`
-- IPv6 loopback address: `::1`
-- Configured default gateway addresses, such as `192.168.1.1` and `10.0.0.1`
-- Configured DNS resolver addresses, such as `8.8.8.8` and `1.1.1.1`
-
-These are examples of protected addresses, not an exhaustive list. Actual gateway and DNS addresses must be configurable for the deployment environment.
-
-Destination addresses must be parsed and validated using an IP address library. String matching alone is insufficient.
-
-#### Rate Limit Bounds
-
-- Minimum permitted rate limit: `100 PPS`
-- Maximum permitted rate limit: `50000 PPS`
-
-Requests outside this range must be rejected before mitigation activation.
-
-#### Mitigation Duration Bounds
-
-- Minimum duration: `10 seconds`
-- Maximum duration: `300 seconds`
-
-Every mitigation must have a validated expiration time. Expired mitigations must not remain active in the simulation state.
-
-### 5.3 Emergency Disable Kill Switch
-
-The endpoint `POST /api/v1/mitigations/disable` provides an emergency mechanism for disabling active virtual mitigations.
-
-The endpoint must:
-
-1. Require operator authentication and authorization.
-2. Disable all active virtual mitigation rules.
-3. Record the operator action, timestamp, and result in the audit log.
-4. Return the resulting mitigation state.
-5. Prevent new mitigation activation while the emergency-disable state is enabled.
-6. Require an explicit authorized action to restore mitigation capability.
-
-The kill switch must update the authoritative backend state, not merely change the frontend shield indicator.
-
-### 5.4 Authentication and API Security
-
-- Protect control-plane endpoints using the configured backend authentication mechanism.
-- Keep secret API tokens on the server; do not expose privileged tokens in public frontend environment variables.
-- Validate request payloads and reject malformed or out-of-range values.
-- Configure CORS to permit only approved frontend origins.
-- Return sanitized error responses without exposing secrets, stack traces, or internal database details.
-- Use request IDs to correlate API requests, errors, and audit events.
-
-### 5.5 Auditability and Fail-Safe Behavior
-
-Every mitigation decision should record:
-
-- Detection and policy decision identifiers.
-- Model version and applicable threshold configuration.
-- Safety validation outcome and rejection reason, where applicable.
-- Mitigation activation, expiration, or emergency-disable event.
-- Simulation tick identifier and relevant telemetry.
-- Timestamp in UTC.
-
-If the ML model, policy engine, persistence layer, or safety validation becomes unavailable, SENTRIX must not silently activate a mitigation. The system should report the failure, record it where possible, and retain the fail-closed behavior.
-
-All mitigation behavior described in this section applies to virtual simulation actions. Physical firewall enforcement requires a separate implementation, explicit authorization, and safety testing.
-
-
+1. **Allowlist Invariant:** Critical infrastructure (`127.0.0.1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, and healthcheck probes) can never be blocked. The engine enforces an immutable whitelist validation gate.
+2. **Dry-Run by Default:** Newly proposed rules start in `DRY_RUN` mode. No traffic is actively dropped until an authenticated SOC operator explicitly approves the rule.
+3. **Mandatory Rule TTL:** Every rule has an enforced expiration timestamp (default 300s). Expired rules are automatically purged by background cleanup to prevent indefinite blacklisting.
+4. **Emergency Kill-Switch:** A global emergency switch (`set_emergency_disabled(True)`) bypasses all active mitigations in sub-millisecond execution time.
+5. **Privacy by Default:** Raw IP addresses ingested into the telemetry pipeline are automatically masked to `/24` or `/48` subnets before storage or aggregation, ensuring compliance with privacy regulations.
+6. **Immutable Audit Ledger:** Every rule proposal, approval, revocation, and automated threat alert writes an append-only record to `AuditEventModel`.

@@ -18,23 +18,23 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 
 const variantStyles: Record<BadgeVariant, string> = {
   matrix:
-    "bg-[rgba(0,255,157,0.12)] text-[#00FF9D] border-[#00FF9D]/40 shadow-[0_0_10px_rgba(0,255,157,0.2)]",
+    "bg-[rgba(0,255,157,0.14)] text-[#00FF9D] border-[#00FF9D]/50 shadow-[0_0_10px_rgba(0,255,157,0.25)]",
   cyan:
-    "bg-[rgba(6,182,212,0.12)] text-[#06B6D4] border-[#06B6D4]/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]",
+    "bg-[rgba(6,182,212,0.14)] text-[#06B6D4] border-[#06B6D4]/50 shadow-[0_0_10px_rgba(6,182,212,0.25)]",
   simulation:
-    "bg-[rgba(6,182,212,0.12)] text-[#06B6D4] border-[#06B6D4]/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]",
+    "bg-[rgba(6,182,212,0.14)] text-[#06B6D4] border-[#06B6D4]/50 shadow-[0_0_10px_rgba(6,182,212,0.25)]",
   normal:
-    "bg-[rgba(16,185,129,0.15)] text-[#10B981] border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]",
+    "bg-emerald-500/15 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]",
   warning:
-    "bg-[rgba(245,158,11,0.15)] text-[#F59E0B] border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]",
+    "bg-amber-500/15 text-amber-400 border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]",
   critical:
-    "bg-[rgba(239,68,68,0.18)] text-[#EF4444] border-red-500/40 shadow-[0_0_10px_rgba(239,68,68,0.25)]",
+    "bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-[0_0_10px_rgba(239,68,68,0.25)]",
   info:
-    "bg-[rgba(6,182,212,0.12)] text-[#06B6D4] border-[#06B6D4]/40 shadow-[0_0_10px_rgba(6,182,212,0.2)]",
+    "bg-[rgba(6,182,212,0.14)] text-[#06B6D4] border-[#06B6D4]/50 shadow-[0_0_10px_rgba(6,182,212,0.2)]",
   outline:
-    "bg-[rgba(31,41,55,0.4)] text-[#9CA3AF] border-[rgba(75,85,99,0.4)]",
+    "bg-[#1F2937]/50 text-gray-300 border-gray-700/60",
   stale:
-    "bg-[rgba(245,158,11,0.15)] text-[#F59E0B] border-amber-500/40 animate-pulse",
+    "bg-amber-500/15 text-amber-300 border-amber-500/40 animate-pulse",
 };
 
 export function Badge({
