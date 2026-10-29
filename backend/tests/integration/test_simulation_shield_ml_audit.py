@@ -141,15 +141,19 @@ def test_issue_2_background_clock_worker_persists_simulation(
     simulation_clock_worker.start()
     simulation_clock_worker.wake()
 
-    # Advance a tick via manager
-    manager.execute_single_step(run.run_id)
-    refreshed = manager.repo.get_run(run.run_id)
-    assert refreshed is not None
-    assert refreshed.current_tick > initial_tick
+    try:
+        # Advance a tick via manager
+        manager.execute_single_step(run.run_id)
+        refreshed = manager.repo.get_run(run.run_id)
+        assert refreshed is not None
+        assert refreshed.current_tick > initial_tick
 
-    # Stop simulation explicitly
-    manager.cancel_run(run.run_id)
-    assert manager.repo.get_run(run.run_id).status == "cancelled"
+        # Stop simulation explicitly
+        manager.cancel_run(run.run_id)
+        assert manager.repo.get_run(run.run_id).status == "cancelled"
+    finally:
+        simulation_clock_worker.stop()
+        simulation_clock_worker._session_factory = None
 
 
 # ==============================================================================
